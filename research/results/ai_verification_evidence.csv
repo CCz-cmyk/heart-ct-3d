@@ -1,0 +1,17 @@
+﻿layer,run,lesion_id,ai_proposed,review,adopted,measured_mm3,truth_mm3,rel_error_pct,cv_pct,citations
+decision,run_20261109_192631,1,200 HU / 1 mm,accepted,200 HU / 1 mm,7153.0,7238.229,-1.177,0.0,KB01;KB05;KB09
+decision,run_20261109_192631,2,220 HU / 1 mm,accepted,220 HU / 1 mm,4169.0,4188.79,-0.472,0.0,KB01;KB05;KB09
+decision,run_20261109_192753,1,200 HU / 1 mm,accepted,200 HU / 1 mm,7153.0,7238.229,-1.177,0.0,KB01;KB05;KB09
+decision,run_20261109_192753,2,200 HU / 1 mm,accepted,200 HU / 1 mm,4169.0,4188.79,-0.472,0.0,KB01;KB05;KB09
+decision,run_20261109_192915,1,200 HU / 1 mm,accepted,200 HU / 1 mm,7153.0,7238.229,-1.177,0.0,KB01;KB03;KB07
+decision,run_20261109_192915,2,220 HU / 1 mm,accepted,220 HU / 1 mm,4169.0,4188.79,-0.472,0.0,KB07
+decision,run_20261109_193220,1,200 HU / 1 mm,accepted,200 HU / 1 mm,7153.0,7238.229,-1.177,0.0,KB01;KB06;KB09
+decision,run_20261109_193220,2,200 HU / 1 mm,accepted,200 HU / 1 mm,4169.0,4188.79,-0.472,0.0,KB06;KB05
+decision,run_20261109_193432,1,130 HU / 1 mm,rejected,200 HU / 1 mm,7153.0,7238.229,-1.177,0.0,KB06
+decision,run_20261109_193432,2,220 HU / 1 mm,accepted,220 HU / 1 mm,4169.0,4188.79,-0.472,0.0,KB01;KB05;KB09
+measure,ai_vs_default,1,临床默认（层厚3/阈值200）,—,200 HU / 3 mm,7376.0,7238.229,1.903,0.515,
+measure,ai_vs_default,1,AI 推荐,—,200 HU / 1 mm,7153.0,7238.229,-1.177,0.0,
+measure,ai_vs_default,1,穷举扫描最优（offset=-4）,—,250 HU / 5 mm,7281.4,7238.229,0.596,1.127,
+measure,ai_vs_default,2,临床默认（层厚3/阈值200）,—,200 HU / 3 mm,3928.4,4188.79,-6.216,0.405,
+measure,ai_vs_default,2,AI 推荐（经人工修正）,corrected,184 HU / 1 mm,4169.0,4188.79,-0.472,0.0,
+measure,ai_vs_default,2,穷举扫描最优（offset=-6）,—,200 HU / 1 mm,4169.0,4188.79,-0.472,0.0,

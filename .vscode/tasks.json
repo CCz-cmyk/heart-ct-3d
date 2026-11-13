@@ -1,0 +1,94 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "1. MySQL 数据库 (3306)",
+      "type": "process",
+      "command": "C:\\heart_3d_project\\_tools\\mysql_extract\\mysql-8.0.42-winx64\\bin\\mysqld.exe",
+      "args": [
+        "--datadir=C:\\heart_3d_project\\mysql-data",
+        "--port=3306"
+      ],
+      "isBackground": true,
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "never",
+        "panel": "dedicated",
+        "group": "heart3d"
+      }
+    },
+    {
+      "label": "2. 后端 API (8000)",
+      "type": "process",
+      "command": "C:\\heart_3d_project\\backend\\venv\\Scripts\\python.exe",
+      "args": [
+        "-m",
+        "uvicorn",
+        "app.main:app",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "8000",
+        "--reload"
+      ],
+      "options": {
+        "cwd": "C:\\heart_3d_project\\backend"
+      },
+      "isBackground": true,
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "group": "heart3d"
+      }
+    },
+    {
+      "label": "3. 前端 Vite (5173)",
+      "type": "process",
+      "command": "C:\\heart_3d_project\\_tools\\node_extract\\node-v22.23.4-win-x64\\node.exe",
+      "args": [
+        "node_modules/vite/bin/vite.js"
+      ],
+      "options": {
+        "cwd": "C:\\heart_3d_project\\frontend"
+      },
+      "isBackground": true,
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "group": "heart3d"
+      }
+    },
+    {
+      "label": "启动全部服务（点这个）",
+      "dependsOrder": "parallel",
+      "dependsOn": [
+        "1. MySQL 数据库 (3306)",
+        "2. 后端 API (8000)",
+        "3. 前端 Vite (5173)"
+      ],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "停止全部服务",
+      "type": "shell",
+      "command": "powershell",
+      "args": [
+        "-NoProfile",
+        "-Command",
+        "Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*heart_3d_project*' -and ($_.Name -eq 'mysqld.exe' -or $_.Name -eq 'python.exe' -or $_.Name -eq 'node.exe') } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }; Write-Host 'All Heart3D services stopped.'"
+      ],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "group": "heart3d"
+      },
+      "problemMatcher": []
+    }
+  ]
+}

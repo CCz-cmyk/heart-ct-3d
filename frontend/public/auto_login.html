@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html>
+<body>
+<script>
+fetch('/api/auth/login', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ username: 'root', password: 'root' })
+}).then(r => r.json()).then(d => {
+  localStorage.setItem('token', d.token)
+  localStorage.setItem('user', JSON.stringify(d.user || { username: 'root' }))
+  location.href = '/viewer/1'
+}).catch(e => document.body.innerHTML = '登录失败: ' + e.message)
+</script>
+</body>
+</html>

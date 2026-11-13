@@ -1,0 +1,11 @@
+{
+  "_说明": "这是模板，不含任何真实密钥。复制为同目录的 config.local.json 再填写；也可以完全不建文件，改用环境变量 ARK_API_KEY / ARK_MODEL（环境变量优先于本文件）。config.local.json 已被打包脚本排除，不入库、不进报告。",
+  "_多接入点": "models 是可选的备用列表：按顺序尝试，某个接入点免费额度用尽（429）会自动换下一个。填好之后跑 python check_models.py 看哪些还能用，加 --apply 自动把能用的排到前面。",
+  "provider": "volcengine_ark",
+  "base_url": "https://ark.cn-beijing.volces.com/api/v3",
+  "model": "ep-XXXXXXXXXXXX-XXXXX",
+  "models": ["ep-XXXXXXXXXXXX-XXXXX", "ep-YYYYYYYYYYYY-YYYYY"],
+  "api_key": "ark-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX-XXXXX",
+  "temperature": 0.2,
+  "timeout": 60
+}

@@ -1,0 +1,26 @@
+{
+  "python.defaultInterpreterPath": "C:\\heart_3d_project\\backend\\venv\\Scripts\\python.exe",
+  "files.watcherExclude": {
+    "**/mysql-data/**": true,
+    "**/data/volumes/**": true,
+    "**/node_modules/**": true,
+    "**/_tools/**": true,
+    "**/backend/venv/**": true,
+    "**/_backup_anatomy_v2/**": true
+  },
+  "search.exclude": {
+    "**/mysql-data": true,
+    "**/data/volumes": true,
+    "**/node_modules": true,
+    "**/_tools": true,
+    "**/backend/venv": true,
+    "**/_backup_anatomy_v2": true,
+    "**/*.npy": true,
+    "**/*.ibd": true
+  },
+  "files.exclude": {
+    "**/__pycache__": true
+  },
+  "editor.fontSize": 14,
+  "editor.tabSize": 2
+}

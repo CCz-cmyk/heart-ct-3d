@@ -1,0 +1,7 @@
+﻿case_id,lesion_id,lesion_name,param_source,note,slice_thickness_mm,threshold_hu,window_center,window_width,truth_volume_mm3,measured_mean_mm3,measured_sd_mm3,abs_error_mm3,rel_error_pct,repeatability_cv_pct,corrected
+1,1,前降支近段钙化斑块,default,临床默认（层厚3/阈值200）,3,200,40,400,7238.229,7376.0,38.013,137.771,1.903,0.515,False
+1,1,前降支近段钙化斑块,ai,AI 推荐,1,200,300,600,7238.229,7153.0,0.0,-85.229,-1.177,0.0,False
+1,1,前降支近段钙化斑块,grid_best,穷举扫描最优（offset=-4）,5,250,40,400,7238.229,7281.4,82.06,43.171,0.596,1.127,False
+1,2,右冠近段混合斑块,default,临床默认（层厚3/阈值200）,3,200,40,400,4188.79,3928.4,15.9,-260.39,-6.216,0.405,False
+1,2,右冠近段混合斑块,ai,AI 推荐（经人工修正）,1,184,200,400,4188.79,4169.0,0.0,-19.79,-0.472,0.0,True
+1,2,右冠近段混合斑块,grid_best,穷举扫描最优（offset=-6）,1,200,40,400,4188.79,4169.0,0.0,-19.79,-0.472,0.0,False

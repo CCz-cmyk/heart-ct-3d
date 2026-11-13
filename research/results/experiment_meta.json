@@ -1,0 +1,56 @@
+{
+  "title": "剖切面重建参数对病灶体积量化误差的影响",
+  "case_id": 1,
+  "volume_file": "C:\\heart_3d_project\\data\\volumes\\case_01.npy",
+  "volume_shape": [
+    192,
+    256,
+    256
+  ],
+  "volume_dtype": "float32",
+  "hu_range": [
+    -1000.0,
+    431.044189453125
+  ],
+  "axis_order": "z, y, x（数据库病灶坐标为 x, y, z，已换算为 [cz, cy, cx]）",
+  "spacing_mm": [
+    1.0,
+    1.0,
+    1.0
+  ],
+  "spacing_note": "名义等间距，未做物理标定；体积单位为体素数（mm^3 等价）",
+  "truth_definition": "4/3*pi*r^3，r 为数字体模生成参数中的病灶半径",
+  "lesion_source": "mysql:heart3d.lesions",
+  "slice_thickness": [
+    1,
+    2,
+    3,
+    4,
+    5
+  ],
+  "thresholds_hu": [
+    150,
+    200,
+    250,
+    300,
+    350
+  ],
+  "offsets_vox": [
+    -6,
+    -4,
+    -2,
+    0,
+    2,
+    4,
+    6
+  ],
+  "repeats_per_condition": 5,
+  "jitter_sigma_vox": 1.0,
+  "seed": 20261108,
+  "detail_rows": 1750,
+  "summary_rows": 350,
+  "runtime_sec": 0.63,
+  "python": "3.11.9",
+  "numpy": "2.2.1",
+  "platform": "Windows-10-10.0.26200-SP0"
+}

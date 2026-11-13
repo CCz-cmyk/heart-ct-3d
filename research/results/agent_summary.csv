@@ -1,0 +1,3 @@
+﻿case_id,lesion_id,lesion_name,steps,tool_calls,final_threshold_hu,final_thickness,review_decision,ai_proposed_threshold,ai_proposed_thickness,agent_measured_mm3,truth_mm3,agent_rel_error_pct,agent_cv_pct,default_measured_mm3,default_rel_error_pct,default_cv_pct,citations,reason,uncertainty
+1,1,前降支近段钙化斑块,5,4,200,1,rejected,130,1,7153.0,7238.229,-1.177,0.0,7376.0,1.903,0.515,KB06,独立复核拒绝 AI 提议（130 HU / 1 mm），回落实证稳健参数 200 HU / 1 mm,最终参数并非 AI 原始输出，已被复核环节替换
+1,2,右冠近段混合斑块,5,4,220,1,accepted,220,1,4169.0,4188.79,-0.472,0.0,3928.4,-6.216,0.405,KB01;KB05;KB09,阈值高于背景均值+3SD，低于病灶峰值；层厚匹配原始扫描精度,本阈值仅量化混合斑块中高密度钙化组分，非钙化组分未覆盖

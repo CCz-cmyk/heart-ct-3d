@@ -1,0 +1,27 @@
+# 模型接口凭证（含 API Key，永不进入仓库与分发包）
+research/config.local*
+!research/config.local.example.json
+research/*.bak*
+
+# 本地运行环境与缓存
+venv/
+__pycache__/
+*.pyc
+node_modules/
+frontend/dist/
+data/ai_results/*.json
+
+# 运行期数据库、安装包与工具目录（体积大、可由脚本重建）
+mysql-data/
+_tools/
+_install/
+backup/
+_backup_anatomy_v1/
+_backup_anatomy_v2/
+data/dicom_cache/
+data/dicom_upload/
+data/preview/
+data/ai_results_备份_*/
+
+# 超过 GitHub 单文件 100 MB 上限的体数据（由 work/gen_hd_volume.py 重造）
+data/volumes/case_hd01.npy

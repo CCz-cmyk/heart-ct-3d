@@ -1,0 +1,262 @@
+{
+  "meta": {
+    "name": "心脏 CT 病灶体积量化 · 科研知识库",
+    "version": "1.0",
+    "built_at": "2026-11-09",
+    "scope": "冠状动脉钙化定量、层厚与部分容积效应、Cavalieri 体视学体积估计",
+    "note": "题录与出处逐条对应真实文献；结论要点按题录信息客观整理，涉及具体数值的条目列出原文待核标记，避免以摘要代替原文。"
+  },
+  "papers": [
+    {
+      "id": "KB01",
+      "title": "Coronary Calcification at Electron-Beam CT: Effect of Section Thickness on Calcium Scoring in Vitro and in Vivo",
+      "authors": [
+        "Vliegenthart R",
+        "Song B",
+        "Hofman A",
+        "Witteman JCM",
+        "Oudkerk M"
+      ],
+      "venue": "Radiology 2003;229:520-525",
+      "year": 2003,
+      "url": "https://pubs.rsna.org/doi/abs/10.1148/radiol.2292021305",
+      "tags": [
+        "层厚",
+        "钙化评分",
+        "体外与体内",
+        "电子束CT"
+      ],
+      "findings": "在体外体模与活体两套数据上考察重建层厚变化对冠状动脉钙化评分的影响，是层厚敏感性较早的系统性证据。",
+      "relevance": "支持本研究把重建层厚列为第一自变量：钙化评分/体积对层厚敏感，且体外体模与活体结论可能不一致。",
+      "caveat": "具体评分随层厚变化的百分比需回读原文表格，本知识库只保留题录级结论。"
+    },
+    {
+      "id": "KB02",
+      "title": "The accuracy of 1- and 3-mm slices in coronary calcium scoring using multi-slice CT in vitro and in vivo",
+      "authors": [
+        "Mühlenbruch G",
+        "Klotz E",
+        "Wildberger JE",
+        "Koos R",
+        "Das M",
+        "Niethammer M",
+        "Hohl C",
+        "Honnef D",
+        "Thomas C",
+        "Günther RW",
+        "Mahnken AH"
+      ],
+      "venue": "Eur Radiol 2007;17:321-329",
+      "year": 2007,
+      "url": "https://zero.sci-hub.se/1261/366370cea1efe795f9e95ad2844079e7/10.1007@s00330-006-0332-0.pdf",
+      "tags": [
+        "层厚",
+        "1mm",
+        "3mm",
+        "钙化评分",
+        "体模"
+      ],
+      "findings": "以 1 mm 与 3 mm 重建层厚对照多排 CT 钙化评分的准确性，覆盖体外体模与在体两组验证。",
+      "relevance": "为'薄层（1 mm）更接近真值、厚层系统性偏离'这一假设提供直接文献依据，也是本研究默认层厚取 3 的现实理由。",
+      "caveat": "各评分等级下的误差范围需回读原文。"
+    },
+    {
+      "id": "KB03",
+      "title": "Effect of Varying Slice Thickness on Coronary Calcium Scoring With Multislice Computed Tomography in Vitro and in Vivo",
+      "authors": [
+        "Mühlenbruch G",
+        "Thomas C",
+        "Wildberger JE",
+        "Koos R",
+        "Das M",
+        "Hohl C",
+        "Katoh M",
+        "Günther RW",
+        "Mahnken AH"
+      ],
+      "venue": "Investigative Radiology 2005",
+      "year": 2005,
+      "url": "https://moscow.sci-hub.se/5474/b76207cb9a08ad15bc0a0b3af6c7092a/10.1097@01.rli.0000179523.07907.a6.pdf",
+      "tags": [
+        "层厚",
+        "钙化评分",
+        "多排CT",
+        "部分容积效应"
+      ],
+      "findings": "系统比较不同重建层厚下多排 CT 钙化评分结果，体外与在体并行，指向厚层带来的部分容积平均效应。",
+      "relevance": "支撑本研究在厚层测量中采用'块内平均 HU'模拟部分容积效应的方法设计。",
+      "caveat": "具体层厚档位与偏差幅度需回读原文。"
+    },
+    {
+      "id": "KB04",
+      "title": "Sensitivity to Detect Small Coronary Artery Calcium Lesions With Varying Slice Thickness Using Electron Beam Tomography",
+      "authors": [
+        "Mao S",
+        "Child J",
+        "Carson S",
+        "Liu SC",
+        "Oudiz RJ",
+        "Budoff MJ"
+      ],
+      "venue": "Investigative Radiology 2003",
+      "year": 2003,
+      "url": "https://pubmed.ncbi.nlm.nih.gov/12595800/",
+      "tags": [
+        "小病灶",
+        "层厚",
+        "检出敏感性",
+        "钙化"
+      ],
+      "findings": "聚焦小钙化灶，考察层厚变化对检出敏感性的影响，提示小病灶在厚层下更易漏检。",
+      "relevance": "直接支撑本研究'阈值过高或层厚过大导致小钙化灶漏检（误差接近 −100%）'的观察方向。",
+      "caveat": "敏感性数值与病灶尺寸分层需回读原文。"
+    },
+    {
+      "id": "KB05",
+      "title": "Coronary Artery Calcium: Absolute Quantification in Nonenhanced and Contrast-enhanced Multi-Detector Row CT Studies",
+      "authors": [
+        "Hong C",
+        "Becker CR",
+        "Schoepf UJ",
+        "Ohnesorge B",
+        "Bruening R",
+        "Reiser MF"
+      ],
+      "venue": "Radiology 2002",
+      "year": 2002,
+      "url": "https://moscow.sci-hub.se/4371/53d1b2db987ac73b487863ad24525150/hong2002.pdf",
+      "tags": [
+        "绝对定量",
+        "钙化体积",
+        "MDCT",
+        "对比剂"
+      ],
+      "findings": "讨论平扫与增强多排 CT 下冠脉钙化的绝对定量，涉及质量/体积口径与扫描条件的影响。",
+      "relevance": "支持本研究采用'体积'而非'评分'作为主因变量的选择，并说明增强扫描会干扰钙化定量。",
+      "caveat": "质量与体积换算口径需回读原文。"
+    },
+    {
+      "id": "KB06",
+      "title": "Coronary Artery Calcium: A Multi-institutional, Multimanufacturer International Standard for Quantification at Cardiac CT",
+      "authors": [
+        "McCollough CH",
+        "Ulzheimer S",
+        "Halliburton SS",
+        "Shanneik K",
+        "White RD",
+        "Kalender WA"
+      ],
+      "venue": "Radiology 2007",
+      "year": 2007,
+      "url": "https://pubmed.ncbi.nlm.nih.gov/17456875/",
+      "tags": [
+        "标准化",
+        "定量",
+        "多中心",
+        "扫描参数"
+      ],
+      "findings": "提出跨机构、跨厂商的冠脉钙化定量标准，明确扫描与重建参数对可比性的影响。",
+      "relevance": "为'参数不统一导致结果不可比'提供权威依据，也是本研究强调参数口径必须写清的理由。",
+      "caveat": "标准条款细节需回读原文。"
+    },
+    {
+      "id": "KB07",
+      "title": "The effects of section thickness on the estimation of liver volume by the Cavalieri principle using computed tomography images",
+      "authors": [
+        "Emirzeoglu M",
+        "Sahin B",
+        "Selcuk MB",
+        "Kaplan S"
+      ],
+      "venue": "European Journal of Radiology (Eur J Radiol) 2005;56:391-397",
+      "year": 2005,
+      "url": "https://www.sci-hub.st/download/2024/1652/b70870732066c2a12e1581927f89ae25/emirzeoglu2005.pdf",
+      "tags": [
+        "Cavalieri",
+        "层厚",
+        "体积估计",
+        "体视学"
+      ],
+      "findings": "研究层厚对 Cavalieri 原理估计器官体积的影响，属'厚层跳采 + 面积积分'误差的方法学源头文献。",
+      "relevance": "本研究第 4 环节的体积测量直接采用 Cavalieri 跳采积分，该文是方法与误差来源的核心依据。",
+      "caveat": "不同层厚下的体积偏差百分比需回读原文。",
+      "note": "期刊卷期已联网核实（PMC 参考文献列表与 Semantic Scholar 一致）"
+    },
+    {
+      "id": "KB08",
+      "title": "A new approach for the estimation of intervertebral disc volume using the Cavalieri principle and computed tomography images",
+      "authors": [
+        "Bilgic S",
+        "Sahin B",
+        "Sonmez OF",
+        "Odaci E",
+        "Colakoglu S",
+        "Kaplan S",
+        "Ergur H"
+      ],
+      "venue": "Clinical Neurology and Neurosurgery 2005;107:282-288",
+      "year": 2005,
+      "url": "https://www.sciencedirect.com/science/article/pii/S0303846704001180",
+      "tags": [
+        "Cavalieri",
+        "体积估计",
+        "CT",
+        "方法学"
+      ],
+      "findings": "在 CT 图像上用 Cavalieri 原理估计椎间盘体积，给出系统的切面取样与面积积分流程。",
+      "relevance": "为'按固定间隔取切面、面积乘层厚求和'的实现方式提供方法学模板。",
+      "caveat": "取样间隔与误差关系需回读原文。"
+    },
+    {
+      "id": "KB09",
+      "title": "Assessment of calcium scoring performance in cardiac computed tomography",
+      "authors": [
+        "Ulzheimer S",
+        "Kalender WA"
+      ],
+      "venue": "Eur Radiol 2003;13:484-497",
+      "year": 2003,
+      "url": "https://pubmed.ncbi.nlm.nih.gov/12594550/",
+      "tags": [
+        "钙化评分",
+        "性能评估",
+        "体模",
+        "阈值"
+      ],
+      "findings": "综述式评估心脏 CT 钙化评分的性能，涉及体模验证方法、阈值设定与扫描参数的影响因素。",
+      "relevance": "支撑本研究用'已知真值的数字体模'做方法学验证的路线，并说明阈值是最敏感的参数之一。",
+      "caveat": "综述中的阈值建议需回读原文。"
+    },
+    {
+      "id": "KB10",
+      "title": "Influence of image reconstruction parameters on cardiovascular risk reclassification by Computed Tomography Coronary Artery Calcium Score",
+      "authors": [
+        "Mantini C",
+        "Maffei E",
+        "Toia P",
+        "Ricci F",
+        "Seitun S",
+        "Clemente A",
+        "Malagò R",
+        "Runza G",
+        "La Grutta L",
+        "Midiri M",
+        "Cotroneo AR",
+        "Forte E",
+        "Cademartiri F"
+      ],
+      "venue": "European Journal of Radiology 2018",
+      "year": 2018,
+      "url": "https://pubmed.ncbi.nlm.nih.gov/29571781/",
+      "tags": [
+        "重建参数",
+        "风险分层",
+        "临床影响",
+        "钙化评分"
+      ],
+      "findings": "研究图像重建参数变化如何影响钙化评分乃至心血管风险分层的结果，把参数误差推到临床决策层面。",
+      "relevance": "为'测量误差不只是数字偏差，还会改变风险分层'提供应用侧依据，用于讨论研究意义与落地价值。",
+      "caveat": "再分类比例等具体数值需回读原文。"
+    }
+  ]
+}
