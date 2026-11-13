@@ -25,3 +25,6 @@ data/ai_results_备份_*/
 
 # 超过 GitHub 单文件 100 MB 上限的体数据（由 work/gen_hd_volume.py 重造）
 data/volumes/case_hd01.npy
+
+# 开发日志
+*.log
