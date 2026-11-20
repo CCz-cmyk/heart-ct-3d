@@ -28,3 +28,9 @@ data/volumes/case_hd01.npy
 
 # 开发日志
 *.log
+
+# 可由脚本重建的合成数据（约 896 MB，不进仓库）
+# volumes: backend/app/volume_gen.py  dicom: backend/make_dicom.py  meshes: backend/build_case_meshes.py
+data/volumes/
+data/dicom/
+data/case_meshes/
