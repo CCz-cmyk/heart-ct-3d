@@ -1,5 +1,5 @@
 {
-  "python.defaultInterpreterPath": "C:\\heart_3d_project\\backend\\venv\\Scripts\\python.exe",
+  "python.defaultInterpreterPath": "${workspaceFolder}/backend/venv/Scripts/python.exe",
   "files.watcherExclude": {
     "**/mysql-data/**": true,
     "**/data/volumes/**": true,

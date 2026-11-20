@@ -2,13 +2,31 @@
   "version": "2.0.0",
   "tasks": [
     {
+      "label": "0. 准备 MySQL ASCII 链接",
+      "type": "shell",
+      "command": "powershell",
+      "args": [
+        "-NoProfile",
+        "-Command",
+        "$l = Join-Path $env:TEMP 'heart3d-workspace'; if (-not (Test-Path -LiteralPath $l)) { New-Item -ItemType Junction -Path $l -Target '${workspaceFolder}' | Out-Null; Write-Host \"Created junction: $l\" } else { Write-Host \"Junction exists: $l\" }"
+      ],
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "silent",
+        "panel": "dedicated",
+        "group": "heart3d"
+      }
+    },
+    {
       "label": "1. MySQL 数据库 (3306)",
       "type": "process",
-      "command": "C:\\heart_3d_project\\_tools\\mysql_extract\\mysql-8.0.42-winx64\\bin\\mysqld.exe",
+      "command": "${env:TEMP}\\heart3d-workspace\\_tools\\mysql_extract\\mysql-8.0.42-winx64\\bin\\mysqld.exe",
       "args": [
-        "--datadir=C:\\heart_3d_project\\mysql-data",
+        "--basedir=${env:TEMP}\\heart3d-workspace\\_tools\\mysql_extract\\mysql-8.0.42-winx64",
+        "--datadir=${env:TEMP}\\heart3d-workspace\\mysql-data",
         "--port=3306"
       ],
+      "dependsOn": ["0. 准备 MySQL ASCII 链接"],
       "isBackground": true,
       "problemMatcher": [],
       "presentation": {
@@ -20,7 +38,7 @@
     {
       "label": "2. 后端 API (8000)",
       "type": "process",
-      "command": "C:\\heart_3d_project\\backend\\venv\\Scripts\\python.exe",
+      "command": "${workspaceFolder}\\backend\\venv\\Scripts\\python.exe",
       "args": [
         "-m",
         "uvicorn",
@@ -32,7 +50,7 @@
         "--reload"
       ],
       "options": {
-        "cwd": "C:\\heart_3d_project\\backend"
+        "cwd": "${workspaceFolder}\\backend"
       },
       "isBackground": true,
       "problemMatcher": [],
@@ -43,14 +61,17 @@
       }
     },
     {
-      "label": "3. 前端 Vite (5173)",
+      "label": "3. 前端 Vite (5176)",
       "type": "process",
-      "command": "C:\\heart_3d_project\\_tools\\node_extract\\node-v22.23.4-win-x64\\node.exe",
+      "command": "${workspaceFolder}\\_tools\\node_extract\\node-v22.23.4-win-x64\\node.exe",
       "args": [
-        "node_modules/vite/bin/vite.js"
+        "node_modules/vite/bin/vite.js",
+        "--port",
+        "5176",
+        "--strictPort"
       ],
       "options": {
-        "cwd": "C:\\heart_3d_project\\frontend"
+        "cwd": "${workspaceFolder}\\frontend"
       },
       "isBackground": true,
       "problemMatcher": [],
@@ -66,7 +87,7 @@
       "dependsOn": [
         "1. MySQL 数据库 (3306)",
         "2. 后端 API (8000)",
-        "3. 前端 Vite (5173)"
+        "3. 前端 Vite (5176)"
       ],
       "group": {
         "kind": "build",
@@ -81,7 +102,7 @@
       "args": [
         "-NoProfile",
         "-Command",
-        "Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*heart_3d_project*' -and ($_.Name -eq 'mysqld.exe' -or $_.Name -eq 'python.exe' -or $_.Name -eq 'node.exe') } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }; Write-Host 'All Heart3D services stopped.'"
+        "foreach($p in 3306,8000,5176){ Get-NetTCPConnection -LocalPort $p -State Listen -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue } }; Write-Host 'All Heart3D services stopped.'"
       ],
       "presentation": {
         "reveal": "always",
