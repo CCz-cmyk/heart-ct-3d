@@ -1,0 +1,2625 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>心脏 CT 3D 可视化医疗辅助系统 · Heart CT 3D Visualization</title>
+<meta name="description" content="把 CT 影像从一张张切片，变成可交互的三维心脏。基于 Vue3 + VTK.js + Three.js + FastAPI + MySQL 的本地医学影像 3D 可视化演示系统。" />
+<meta name="theme-color" content="#0a1628" />
+<style>
+/* ============================================================
+   0. 设计令牌（改这里换肤）
+   ============================================================ */
+:root{
+  --bg-0:#05090f;
+  --bg-1:#0a1628;
+  --bg-2:#0e1621;
+  --panel:rgba(17,30,48,.55);
+  --panel-2:rgba(10,20,34,.72);
+  --line:rgba(0,229,255,.14);
+  --line-2:rgba(140,180,220,.10);
+
+  --cyan:#00e5ff;
+  --cyan-2:#22d3ee;
+  --cyan-dim:rgba(0,229,255,.55);
+  --red:#ff4d6d;
+  --red-2:#ff7a8f;
+  --amber:#ffb020;
+
+  --text:#e6f1ff;
+  --text-2:#a9c0d8;
+  --muted:#6f88a3;
+
+  --font-cn:"PingFang SC","Hiragino Sans GB","Source Han Sans SC","Noto Sans SC","Microsoft YaHei",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --font-mono:"JetBrains Mono","SF Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,"Cascadia Mono","Roboto Mono",monospace;
+
+  --r-lg:20px;
+  --r-md:14px;
+  --r-sm:8px;
+  --shadow-cyan:0 24px 70px -28px rgba(0,229,255,.55);
+  --ease:cubic-bezier(.16,1,.3,1);
+}
+
+/* ============================================================
+   1. 基础重置
+   ============================================================ */
+*,*::before,*::after{box-sizing:border-box;}
+html{scroll-behavior:smooth;-webkit-text-size-adjust:100%;}
+body{
+  margin:0;
+  background:var(--bg-0);
+  color:var(--text);
+  font-family:var(--font-cn);
+  font-size:16px;
+  line-height:1.7;
+  overflow-x:hidden;
+  -webkit-font-smoothing:antialiased;
+}
+h1,h2,h3,h4,p,figure{margin:0;}
+a{color:inherit;text-decoration:none;}
+button{font-family:inherit;}
+canvas{display:block;}
+::selection{background:rgba(0,229,255,.28);color:#fff;}
+
+/* 滚动条 */
+::-webkit-scrollbar{width:10px;height:10px;}
+::-webkit-scrollbar-track{background:#05090f;}
+::-webkit-scrollbar-thumb{background:linear-gradient(180deg,rgba(0,229,255,.5),rgba(0,229,255,.14));border-radius:8px;}
+::-webkit-scrollbar-thumb:hover{background:rgba(0,229,255,.7);}
+
+.wrap{width:min(1240px,calc(100% - 48px));margin-inline:auto;}
+.mono{font-family:var(--font-mono);font-variant-numeric:tabular-nums;letter-spacing:.01em;}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;}
+
+/* ============================================================
+   2. 全局背景层（网格 / 光晕 / 噪声 / 扫描线 / 粒子）
+   ============================================================ */
+.bg-layer{position:fixed;inset:0;z-index:0;pointer-events:none;}
+.bg-base{
+  position:absolute;inset:0;
+  background:
+    radial-gradient(1200px 720px at 76% -8%, rgba(0,229,255,.14), transparent 62%),
+    radial-gradient(900px 620px at 12% 8%, rgba(255,77,109,.10), transparent 60%),
+    radial-gradient(1400px 900px at 50% 108%, rgba(34,211,238,.10), transparent 66%),
+    linear-gradient(180deg,#05090f 0%,#08101c 32%,#0a1628 62%,#060c15 100%);
+}
+.bg-grid{
+  position:absolute;inset:-2px;
+  background-image:
+    linear-gradient(to right, rgba(120,190,230,.055) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(120,190,230,.055) 1px, transparent 1px);
+  background-size:64px 64px, 64px 64px;
+  mask-image:radial-gradient(120% 90% at 50% 30%, #000 20%, rgba(0,0,0,.55) 55%, transparent 88%);
+  -webkit-mask-image:radial-gradient(120% 90% at 50% 30%, #000 20%, rgba(0,0,0,.55) 55%, transparent 88%);
+}
+.bg-grid::after{
+  content:"";position:absolute;inset:0;
+  background-image:
+    linear-gradient(to right, rgba(0,229,255,.10) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(0,229,255,.10) 1px, transparent 1px);
+  background-size:320px 320px, 320px 320px;
+  opacity:.55;
+}
+.bg-noise{
+  position:absolute;inset:0;opacity:.05;mix-blend-mode:overlay;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/></filter><rect width='160' height='160' filter='url(%23n)' opacity='0.65'/></svg>");
+}
+.bg-scan{
+  position:absolute;left:0;right:0;height:38vh;
+  background:linear-gradient(180deg,transparent,rgba(0,229,255,.045) 45%,rgba(0,229,255,.10) 50%,rgba(0,229,255,.045) 55%,transparent);
+  animation:scanSweep 9s linear infinite;
+}
+@keyframes scanSweep{
+  0%{transform:translateY(-40vh);opacity:0;}
+  12%{opacity:1;}
+  88%{opacity:1;}
+  100%{transform:translateY(110vh);opacity:0;}
+}
+#bgParticles{position:absolute;inset:0;width:100%;height:100%;opacity:.85;}
+
+/* 顶部滚动进度 */
+#scrollProgress{
+  position:fixed;top:0;left:0;height:2px;width:0;z-index:120;
+  background:linear-gradient(90deg,var(--red),var(--amber) 30%,var(--cyan));
+  box-shadow:0 2px 8px -2px rgba(0,229,255,.45);
+  transition:width .08s linear;
+}
+/* ============================================================
+   3. 顶部导航
+   ============================================================ */
+.nav{
+  position:fixed;top:0;left:0;right:0;z-index:100;
+  padding:18px 0;
+  transition:padding .45s var(--ease), background .45s, backdrop-filter .45s, border-color .45s, box-shadow .45s;
+  border-bottom:1px solid transparent;
+}
+.nav.is-stuck{
+  padding:10px 0;
+  background:rgba(6,12,21,.78);
+  backdrop-filter:blur(18px) saturate(140%);
+  -webkit-backdrop-filter:blur(18px) saturate(140%);
+  border-bottom-color:rgba(0,229,255,.16);
+  box-shadow:0 18px 50px -30px rgba(0,0,0,.95), 0 1px 0 rgba(0,229,255,.08) inset;
+}
+.nav-inner{display:flex;align-items:center;gap:28px;}
+.brand{display:flex;align-items:center;gap:12px;flex-shrink:0;}
+.brand-mark{width:38px;height:38px;flex-shrink:0;filter:drop-shadow(0 0 10px rgba(0,229,255,.55));}
+.brand-mark svg{width:100%;height:100%;display:block;}
+.brand-txt{display:flex;flex-direction:column;line-height:1.15;}
+.brand-txt b{font-size:15px;letter-spacing:.02em;font-weight:700;}
+.brand-txt span{font-family:var(--font-mono);font-size:9.5px;letter-spacing:.22em;color:var(--cyan-dim);text-transform:uppercase;}
+.nav-menu{display:flex;align-items:center;gap:4px;margin-left:auto;}
+.nav-menu a{
+  position:relative;padding:8px 14px;font-size:13.5px;color:var(--text-2);
+  border-radius:999px;transition:color .3s, background .3s;
+}
+.nav-menu a::after{
+  content:"";position:absolute;left:14px;right:14px;bottom:4px;height:1px;
+  background:linear-gradient(90deg,transparent,var(--cyan),transparent);
+  transform:scaleX(0);transform-origin:center;transition:transform .4s var(--ease);
+}
+.nav-menu a:hover{color:#fff;background:rgba(0,229,255,.07);}
+.nav-menu a:hover::after,.nav-menu a.is-active::after{transform:scaleX(1);}
+.nav-menu a.is-active{color:var(--cyan);}
+.nav-cta{flex-shrink:0;}
+
+/* 按钮 */
+.btn{
+  --bd:rgba(0,229,255,.45);
+  position:relative;display:inline-flex;align-items:center;justify-content:center;gap:9px;
+  padding:11px 22px;border-radius:999px;border:1px solid var(--bd);
+  font-size:14px;font-weight:600;letter-spacing:.02em;cursor:pointer;
+  background:rgba(10,22,40,.6);color:var(--text);
+  overflow:hidden;isolation:isolate;
+  transition:transform .35s var(--ease), border-color .35s, box-shadow .35s, color .35s, background .35s;
+}
+.btn svg{width:16px;height:16px;}
+.btn::before{
+  content:"";position:absolute;inset:0;z-index:-1;opacity:0;
+  background:radial-gradient(120px 60px at var(--mx,50%) var(--my,50%), rgba(0,229,255,.55), transparent 70%);
+  transition:opacity .35s;
+}
+.btn:hover{transform:translateY(-2px);border-color:rgba(0,229,255,.85);box-shadow:0 14px 40px -16px rgba(0,229,255,.85),0 0 0 1px rgba(0,229,255,.2) inset;color:#fff;}
+.btn:hover::before{opacity:.5;}
+.btn:active{transform:translateY(0) scale(.985);}
+.btn-primary{
+  border-color:rgba(0,229,255,.7);
+  background:linear-gradient(135deg,rgba(0,229,255,.92),rgba(34,211,238,.86) 45%,rgba(0,180,220,.9));
+  color:#04121b;font-weight:700;
+  box-shadow:0 16px 44px -18px rgba(0,229,255,.9),0 0 26px -8px rgba(0,229,255,.55);
+}
+.btn-primary::after{
+  content:"";position:absolute;inset:0;z-index:-1;
+  background:linear-gradient(110deg,transparent 20%,rgba(255,255,255,.55) 46%,transparent 62%);
+  transform:translateX(-130%);transition:transform .85s var(--ease);
+}
+.btn-primary:hover::after{transform:translateX(130%);}
+.btn-primary:hover{color:#021018;}
+.btn-ghost{background:rgba(255,255,255,.02);color:var(--text);border-color:rgba(160,200,235,.28);}
+.btn-lg{padding:15px 32px;font-size:15px;}
+.btn-sm{padding:8px 16px;font-size:12.5px;}
+
+/* 点击涟漪 */
+.ripple{position:absolute;border-radius:50%;transform:translate(-50%,-50%) scale(0);background:rgba(255,255,255,.45);pointer-events:none;animation:rippleOut .65s ease-out forwards;mix-blend-mode:screen;}
+@keyframes rippleOut{to{transform:translate(-50%,-50%) scale(1);opacity:0;}}
+
+/* 汉堡（移动端） */
+.burger{display:none;width:42px;height:42px;border-radius:12px;border:1px solid var(--line);background:rgba(10,22,40,.6);cursor:pointer;position:relative;}
+.burger span{position:absolute;left:11px;right:11px;height:1.5px;background:var(--cyan);border-radius:2px;transition:transform .35s var(--ease),opacity .25s;}
+.burger span:nth-child(1){top:15px;}
+.burger span:nth-child(2){top:20.5px;}
+.burger span:nth-child(3){top:26px;}
+.nav.is-open .burger span:nth-child(1){transform:translateY(5.5px) rotate(45deg);}
+.nav.is-open .burger span:nth-child(2){opacity:0;}
+.nav.is-open .burger span:nth-child(3){transform:translateY(-5.5px) rotate(-45deg);}
+
+/* ============================================================
+   4. 通用排版 / 分区标题
+   ============================================================ */
+main{position:relative;z-index:2;}
+section{position:relative;}
+.sec{padding:104px 0;}
+.sec-head{max-width:760px;margin-bottom:52px;}
+.eyebrow{
+  display:inline-flex;align-items:center;gap:9px;margin-bottom:16px;
+  padding:5px 13px 5px 11px;border-radius:999px;
+  border:1px solid rgba(0,229,255,.22);background:rgba(0,229,255,.055);
+  font-family:var(--font-mono);font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--cyan);
+}
+@keyframes pulseDot{0%,100%{opacity:1;transform:scale(1);}50%{opacity:.35;transform:scale(.75);}}
+h2.sec-title{
+  font-size:clamp(26px,3.5vw,42px);line-height:1.25;font-weight:800;letter-spacing:-.015em;
+}
+.sec-title em{
+  font-style:normal;
+  color:var(--cyan);
+}
+.sec-desc{margin-top:16px;color:var(--text-2);font-size:15.5px;max-width:660px;}
+.sec-desc b{color:var(--text);font-weight:600;}
+
+/* 滚动淡入 */
+.reveal{opacity:0;transform:translateY(28px);transition:opacity .9s var(--ease),transform .9s var(--ease);transition-delay:var(--d,0ms);will-change:opacity,transform;}
+.reveal.in{opacity:1;transform:none;}
+.reveal-l{opacity:0;transform:translateX(-34px);transition:opacity .95s var(--ease),transform .95s var(--ease);transition-delay:var(--d,0ms);}
+.reveal-l.in{opacity:1;transform:none;}
+.reveal-r{opacity:0;transform:translateX(34px);transition:opacity .95s var(--ease),transform .95s var(--ease);transition-delay:var(--d,0ms);}
+.reveal-r.in{opacity:1;transform:none;}
+.reveal-s{opacity:0;transform:scale(.955);transition:opacity 1s var(--ease),transform 1s var(--ease);transition-delay:var(--d,0ms);}
+.reveal-s.in{opacity:1;transform:none;}
+
+/* 分隔线 */
+.hr-glow{
+  height:1px;border:0;margin:0;
+  background:linear-gradient(90deg,transparent,rgba(0,229,255,.35),rgba(255,77,109,.28),transparent);
+}
+/* ============================================================
+   5. HERO
+   ============================================================ */
+.hero{position:relative;min-height:100vh;display:flex;align-items:center;padding:132px 0 72px;overflow:hidden;}
+.hero-glow{
+  position:absolute;right:-10%;top:4%;width:820px;height:820px;pointer-events:none;
+  background:radial-gradient(circle,rgba(0,229,255,.16),rgba(0,229,255,.05) 38%,transparent 66%);
+  filter:blur(18px);
+}
+.hero-glow.red{left:-16%;right:auto;bottom:-20%;top:auto;width:620px;height:620px;background:radial-gradient(circle,rgba(255,77,109,.16),transparent 64%);}
+.hero-inner{display:grid;grid-template-columns:1fr 1.05fr;gap:36px;align-items:center;position:relative;}
+
+.hero-copy{position:relative;z-index:3;max-width:620px;}
+.hero-title{
+  font-size:clamp(34px,4.6vw,60px);line-height:1.14;font-weight:850;letter-spacing:-.025em;
+  margin-bottom:18px;
+}
+.hero-title .line{display:block;}
+.hero-title .accent{
+  color:var(--cyan);
+}
+.hero-en{
+  display:inline-flex;align-items:center;gap:12px;margin-bottom:20px;
+  font-family:var(--font-mono);font-size:11.5px;letter-spacing:.34em;text-transform:uppercase;color:var(--cyan-dim);
+}
+.hero-en::before,.hero-en::after{content:"";height:1px;width:34px;background:linear-gradient(90deg,transparent,var(--cyan-dim));}
+.hero-en::after{background:linear-gradient(90deg,var(--cyan-dim),transparent);}
+.hero-sub{color:var(--text-2);font-size:16.5px;line-height:1.85;max-width:520px;}
+.hero-sub strong{color:#fff;font-weight:600;}
+.hero-sub .hl{color:var(--cyan);font-weight:600;}
+.hero-actions{display:flex;flex-wrap:wrap;gap:14px;margin-top:34px;}
+.hero-meta{display:flex;flex-wrap:wrap;gap:22px;margin-top:38px;padding-top:24px;border-top:1px solid rgba(140,180,220,.12);}
+.hero-meta div{display:flex;flex-direction:column;}
+.hero-meta b{font-family:var(--font-mono);font-size:17px;color:#fff;letter-spacing:.02em;}
+.hero-meta b i{font-style:normal;font-size:11px;color:var(--cyan);margin-left:2px;}
+.hero-meta span{font-size:11.5px;color:var(--muted);letter-spacing:.08em;}
+
+/* 3D 舞台 */
+.stage{
+  position:relative;aspect-ratio:1/1;width:100%;max-width:660px;margin-left:auto;
+  perspective:1200px;
+}
+.stage-frame{position:absolute;inset:0;border-radius:50%;border:1px solid rgba(0,229,255,.10);}
+.stage-frame.f2{inset:9%;border-style:dashed;border-color:rgba(0,229,255,.14);animation:spinSlow 46s linear infinite;}
+.stage-frame.f3{inset:19%;border-color:rgba(255,77,109,.10);animation:spinSlow 34s linear infinite reverse;}
+@keyframes spinSlow{to{transform:rotate(360deg);}}
+#heartCanvas{position:absolute;inset:0;width:100%;height:100%;cursor:grab;touch-action:none;filter:drop-shadow(0 24px 60px rgba(0,0,0,.6));}
+#heartCanvas2d{position:absolute;inset:0;width:100%;height:100%;cursor:grab;touch-action:none;}
+#heartCanvas.is-hidden,#heartCanvas2d.is-hidden{display:none;}
+#heartCanvas:active{cursor:grabbing;}
+/* 模型加载条 */
+.stage-load{
+  position:absolute;left:50%;bottom:16%;transform:translateX(-50%);
+  display:flex;align-items:center;gap:12px;padding:9px 14px;
+  border-radius:999px;background:rgba(10,22,40,.72);
+  border:1px solid rgba(0,229,255,.22);backdrop-filter:blur(10px);
+  color:var(--cyan);opacity:1;transition:opacity .7s var(--ease),transform .7s var(--ease);
+  pointer-events:none;z-index:6;white-space:nowrap;
+}
+.stage-load.done{opacity:0;transform:translateX(-50%) translateY(8px);}
+.stage-load span{font-size:10px;letter-spacing:.14em;color:#9fd8ee;}
+.stage-load .bar{width:110px;height:3px;border-radius:3px;background:rgba(120,200,230,.18);overflow:hidden;}
+.stage-load .bar i{display:block;height:100%;width:0%;border-radius:3px;
+  background:linear-gradient(90deg,var(--cyan),#8ef);box-shadow:0 2px 8px -2px rgba(0,229,255,.45);transition:width .25s linear;}
+.stage-load em{font-style:normal;font-size:10px;color:#cfe9f6;min-width:34px;text-align:right;}
+.stage-load .stage-slices{font-size:10px;letter-spacing:.04em;color:var(--muted);
+  border-left:1px solid rgba(0,229,255,.18);padding-left:10px;margin-left:2px;}
+.stage-hint{
+  position:absolute;left:50%;bottom:6%;transform:translateX(-50%);
+  display:flex;gap:14px;align-items:center;padding:6px 14px;border-radius:999px;
+  border:1px solid rgba(0,229,255,.14);background:rgba(6,14,24,.6);backdrop-filter:blur(8px);
+  font-family:var(--font-mono);font-size:10px;letter-spacing:.14em;color:var(--muted);text-transform:uppercase;
+  white-space:nowrap;
+}
+.stage-hint b{color:var(--cyan);font-weight:500;}
+
+/* 环绕数据标签 */
+.orbit-tag{
+  position:absolute;z-index:4;display:flex;align-items:center;gap:8px;
+  padding:7px 12px;border-radius:10px;
+  background:rgba(8,18,30,.72);border:1px solid rgba(0,229,255,.22);
+  backdrop-filter:blur(10px);box-shadow:0 12px 34px -18px rgba(0,229,255,.9);
+  font-family:var(--font-mono);font-size:10.5px;letter-spacing:.06em;color:var(--text-2);
+  animation:floatY 6s ease-in-out infinite;white-space:nowrap;
+}
+.orbit-tag i{width:6px;height:6px;border-radius:50%;background:var(--cyan);box-shadow:0 2px 6px -2px rgba(0,229,255,.5);flex-shrink:0;}
+.orbit-tag b{color:#fff;font-weight:600;}
+.orbit-tag.t1{top:9%;left:2%;animation-delay:-.4s;}
+.orbit-tag.t2{top:38%;right:-2%;animation-delay:-2s;}
+.orbit-tag.t2 i{background:var(--red);box-shadow:0 2px 6px -2px rgba(255,77,109,.5);}
+.orbit-tag.t3{bottom:13%;left:6%;animation-delay:-3.4s;}
+@keyframes floatY{0%,100%{transform:translateY(0);}50%{transform:translateY(-9px);}}
+
+/* ECG 条 */
+.ecg{position:absolute;left:-2%;bottom:26%;width:190px;height:44px;opacity:.8;pointer-events:none;}
+.ecg canvas{width:100%;height:100%;}
+
+/* ============================================================
+   6. 数据条（关键数字）
+   ============================================================ */
+.metrics{
+  position:relative;padding:0;
+  border-top:1px solid rgba(140,180,220,.10);
+  border-bottom:1px solid rgba(140,180,220,.10);
+  background:linear-gradient(180deg,rgba(10,22,40,.72),rgba(6,13,22,.55));
+  backdrop-filter:blur(10px);
+}
+.metrics-grid{display:grid;grid-template-columns:repeat(5,1fr);}
+.metric{
+  position:relative;padding:30px 22px;text-align:center;
+  border-left:1px solid rgba(140,180,220,.08);
+}
+.metric:first-child{border-left:0;}
+.metric::after{
+  content:"";position:absolute;left:50%;bottom:0;translate:-50% 0;width:0;height:2px;
+  background:linear-gradient(90deg,transparent,var(--cyan),transparent);transition:width .8s var(--ease);
+}
+.metric:hover::after{width:82%;}
+.metric .num{
+  font-family:var(--font-mono);font-size:clamp(24px,3vw,38px);font-weight:700;line-height:1.1;
+  color:#fff;letter-spacing:-.02em;
+}
+.metric .num .suffix{font-size:.5em;color:var(--cyan);margin-left:3px;vertical-align:super;letter-spacing:0;}
+.metric .lab{margin-top:8px;font-size:12px;color:var(--muted);letter-spacing:.1em;}
+.metric .lab b{color:var(--text-2);font-weight:500;}
+/* ============================================================
+   7. 功能卡片
+   ============================================================ */
+.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;}
+.card{
+  --mx:50%;--my:50%;
+  position:relative;padding:28px 26px 26px;border-radius:var(--r-lg);
+  background:linear-gradient(158deg,rgba(21,38,60,.62),rgba(9,18,30,.55) 62%,rgba(8,15,26,.6));
+  border:1px solid rgba(140,180,220,.12);
+  overflow:hidden;isolation:isolate;
+  transform-style:preserve-3d;
+  transition:transform .5s var(--ease), border-color .5s, box-shadow .5s;
+  will-change:transform;
+}
+.card::before{ /* 鼠标辉光 */
+  content:"";position:absolute;inset:0;z-index:0;opacity:0;transition:opacity .5s;
+  background:radial-gradient(320px 220px at var(--mx) var(--my),rgba(0,229,255,.16),transparent 68%);
+}
+.card:hover::before{opacity:1;}
+.card::after{ /* 描边扫描 */
+  content:"";position:absolute;inset:-1px;border-radius:inherit;z-index:-1;
+  background:conic-gradient(from var(--ang,0deg),transparent 0 62%,rgba(0,229,255,.9) 74%,rgba(255,77,109,.7) 82%,transparent 92%);
+  opacity:0;transition:opacity .5s;
+  -webkit-mask:linear-gradient(#000,#000) content-box,linear-gradient(#000,#000);
+  mask:linear-gradient(#000,#000) content-box,linear-gradient(#000,#000);
+  -webkit-mask-composite:xor;mask-composite:exclude;
+  padding:1px;
+}
+.card:hover::after{opacity:1;animation:angSpin 3.4s linear infinite;}
+@property --ang{syntax:"<angle>";inherits:false;initial-value:0deg;}
+@keyframes angSpin{from{--ang:0deg;}to{--ang:360deg;}}
+.card:hover{
+  transform:translateY(-8px) rotateX(var(--rx,0deg)) rotateY(var(--ry,0deg));
+  border-color:rgba(0,229,255,.34);
+  box-shadow:0 34px 70px -34px rgba(0,229,255,.55),0 0 0 1px rgba(0,229,255,.14) inset;
+}
+.card-in{transform:translateZ(26px);}
+.card .ico{
+  position:relative;width:24px;height:24px;display:grid;place-items:center;margin-bottom:12px;
+}
+.card .ico svg{width:24px;height:24px;stroke:var(--cyan);fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;}
+.card:hover .ico svg{stroke:var(--cyan-2);}
+.card h3{font-size:16.5px;font-weight:700;letter-spacing:.01em;display:flex;align-items:center;gap:9px;flex-wrap:wrap;}
+.card h3 .pin{
+  font-family:var(--font-mono);font-size:9.5px;padding:2px 7px;border-radius:5px;letter-spacing:.1em;
+  color:var(--cyan);background:rgba(0,229,255,.10);border:1px solid rgba(0,229,255,.22);
+}
+.card p{margin-top:10px;font-size:13.5px;line-height:1.75;color:var(--text-2);}
+.card p b{color:#dff6ff;font-weight:600;}
+.card .tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:16px;}
+.card .tags span{
+  font-family:var(--font-mono);font-size:10px;letter-spacing:.05em;padding:3px 9px;border-radius:6px;
+  color:var(--muted);border:1px solid rgba(140,180,220,.14);background:rgba(255,255,255,.02);
+}
+.card .idx{
+  position:absolute;top:18px;right:22px;font-family:var(--font-mono);font-size:34px;font-weight:700;
+  color:rgba(0,229,255,.07);letter-spacing:-.04em;line-height:1;pointer-events:none;
+}
+/* 重点卡（3/4/5）权重更高 */
+.card.hot{
+  border-color:rgba(0,229,255,.22);
+  background:linear-gradient(158deg,rgba(24,44,70,.72),rgba(10,22,38,.62) 60%,rgba(9,16,28,.66));
+}
+.card.hot .ico{background:linear-gradient(150deg,rgba(0,229,255,.26),rgba(0,229,255,.05));border-color:rgba(0,229,255,.4);}
+.card.hot h3{font-size:17.5px;}
+.card.hot .idx{color:rgba(0,229,255,.12);}
+.card.hot::marker{}
+.card.hot .glowbar{
+  position:absolute;left:0;top:0;bottom:0;width:2px;
+  background:linear-gradient(180deg,transparent,var(--cyan),transparent);
+  opacity:.55;
+}
+.card.hot.red .glowbar{background:linear-gradient(180deg,transparent,var(--red),transparent);}
+
+/* ============================================================
+   8. 双模式可视化（Tab）
+   ============================================================ */
+.dual{display:grid;grid-template-columns:.92fr 1.08fr;gap:44px;align-items:center;}
+.tabs{display:inline-flex;padding:5px;border-radius:999px;background:rgba(10,20,34,.7);border:1px solid rgba(140,180,220,.14);margin-bottom:26px;position:relative;}
+.tabs button{
+  position:relative;z-index:2;border:0;background:transparent;color:var(--muted);
+  padding:9px 20px;border-radius:999px;font-size:13.5px;font-weight:600;cursor:pointer;letter-spacing:.02em;
+  transition:color .35s;
+}
+.tabs button.on{color:#04121b;}
+.tabs .thumb{
+  position:absolute;top:5px;bottom:5px;left:5px;border-radius:999px;z-index:1;
+  background:linear-gradient(135deg,var(--cyan),var(--cyan-2));
+  box-shadow:0 10px 22px -10px rgba(0,229,255,.55);
+  transition:transform .5s var(--ease),width .5s var(--ease);
+  width:calc(50% - 5px);
+}
+.dual-desc h3{font-size:clamp(20px,2.2vw,27px);font-weight:800;letter-spacing:-.01em;line-height:1.35;}
+.dual-desc p{margin-top:14px;color:var(--text-2);font-size:14.5px;line-height:1.85;}
+.feature-list{list-style:none;padding:0;margin:22px 0 0;display:grid;gap:12px;}
+.feature-list li{display:flex;gap:11px;font-size:13.5px;color:var(--text-2);align-items:flex-start;}
+.feature-list li svg{width:17px;height:17px;flex-shrink:0;margin-top:3px;stroke:var(--cyan);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;}
+.feature-list li b{color:#e9f8ff;font-weight:600;}
+
+.panel-stage{
+  position:relative;border-radius:24px;overflow:hidden;
+  border:1px solid rgba(0,229,255,.16);
+  background:radial-gradient(120% 100% at 50% 0%,rgba(14,30,50,.9),rgba(6,12,21,.96));
+  box-shadow:0 40px 90px -50px rgba(0,229,255,.7),0 0 0 1px rgba(255,255,255,.02) inset;
+  aspect-ratio:4/3.2;
+}
+.panel-stage::before{ /* 网格 */
+  content:"";position:absolute;inset:0;
+  background-image:linear-gradient(rgba(0,229,255,.055) 1px,transparent 1px),linear-gradient(90deg,rgba(0,229,255,.055) 1px,transparent 1px);
+  background-size:34px 34px;
+  mask-image:radial-gradient(90% 80% at 50% 50%,#000,transparent 85%);
+  -webkit-mask-image:radial-gradient(90% 80% at 50% 50%,#000,transparent 85%);
+}
+.panel{position:absolute;inset:0;opacity:0;visibility:hidden;transform:scale(.985);transition:opacity .6s var(--ease),transform .6s var(--ease),visibility .6s;}
+.panel.on{opacity:1;visibility:visible;transform:none;}
+.panel canvas{position:absolute;inset:0;width:100%;height:100%;}
+.panel-hud{
+  position:absolute;left:16px;right:16px;bottom:14px;display:flex;justify-content:space-between;align-items:flex-end;gap:12px;
+  font-family:var(--font-mono);font-size:10px;letter-spacing:.09em;color:var(--muted);pointer-events:none;
+}
+.panel-hud .chip{
+  padding:5px 10px;border-radius:7px;background:rgba(6,14,24,.7);border:1px solid rgba(0,229,255,.18);color:var(--cyan);
+  backdrop-filter:blur(6px);
+}
+.panel-hud .chip.red{color:var(--red);border-color:rgba(255,77,109,.3);}
+.panel-hud .chip.amber{color:var(--amber);border-color:rgba(255,176,32,.3);}
+.corner{position:absolute;width:18px;height:18px;border:1px solid rgba(0,229,255,.5);pointer-events:none;}
+.corner.tl{top:10px;left:10px;border-right:0;border-bottom:0;}
+.corner.tr{top:10px;right:10px;border-left:0;border-bottom:0;}
+.corner.bl{bottom:10px;left:10px;border-right:0;border-top:0;}
+.corner.br{bottom:10px;right:10px;border-left:0;border-top:0;}
+
+/* ============================================================
+   9. AI 分析流水线
+   ============================================================ */
+.ai-grid{display:grid;grid-template-columns:1.08fr .92fr;gap:44px;align-items:start;}
+.pipe{position:relative;padding-left:34px;margin-top:6px;}
+.pipe::before{
+  content:"";position:absolute;left:11px;top:8px;bottom:8px;width:2px;
+  background:linear-gradient(180deg,rgba(0,229,255,.1),rgba(0,229,255,.55),rgba(255,77,109,.45),rgba(0,229,255,.1));
+  border-radius:2px;overflow:hidden;
+}
+.pipe::after{ /* 流动光点 */
+  content:"";position:absolute;left:8.5px;top:8px;width:7px;height:7px;border-radius:50%;
+  background:var(--cyan);box-shadow:0 2px 10px -2px rgba(0,229,255,.55);
+  animation:flowDot 3.6s cubic-bezier(.5,0,.5,1) infinite;
+}
+@keyframes flowDot{
+  0%{top:8px;opacity:0;}
+  10%{opacity:1;}
+  90%{opacity:1;}
+  100%{top:calc(100% - 15px);opacity:0;}
+}
+.stage-item{position:relative;padding:0 0 30px 4px;}
+.stage-item:last-child{padding-bottom:0;}
+.stage-item .dot{
+  position:absolute;left:-33px;top:3px;width:22px;height:22px;border-radius:50%;
+  display:grid;place-items:center;background:rgba(6,14,24,.95);
+  border:1px solid rgba(0,229,255,.45);
+  font-family:var(--font-mono);font-size:10px;color:var(--cyan);
+}
+.stage-item:nth-child(3) .dot{border-color:rgba(255,77,109,.5);color:var(--red);}
+.stage-item h4{font-size:15px;font-weight:700;display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+.stage-item h4 .t{font-family:var(--font-mono);font-size:10px;color:var(--muted);font-weight:400;letter-spacing:.06em;}
+.stage-item p{margin-top:7px;font-size:13px;color:var(--text-2);line-height:1.72;}
+.stage-item p code{
+  font-family:var(--font-mono);font-size:11.5px;padding:1px 6px;border-radius:4px;
+  background:rgba(0,229,255,.09);color:#9defff;border:1px solid rgba(0,229,255,.16);
+}
+
+/* 报告卡 */
+.report{
+  position:relative;border-radius:20px;padding:22px;overflow:hidden;
+  background:linear-gradient(165deg,rgba(22,40,62,.82),rgba(8,16,27,.9));
+  border:1px solid rgba(0,229,255,.2);
+  box-shadow:0 40px 90px -46px rgba(0,229,255,.8);
+}
+.report::before{
+  content:"";position:absolute;inset:0;pointer-events:none;
+  background:radial-gradient(320px 160px at 90% 0%,rgba(0,229,255,.14),transparent 70%);
+}
+.report-top{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;padding-bottom:16px;border-bottom:1px solid rgba(140,180,220,.12);}
+.report-top .t1{font-family:var(--font-mono);font-size:10px;letter-spacing:.18em;color:var(--cyan);text-transform:uppercase;}
+.report-top .t2{font-size:14.5px;font-weight:700;margin-top:5px;}
+.report-top .t3{font-size:11.5px;color:var(--muted);margin-top:3px;font-family:var(--font-mono);}
+.ring{position:relative;width:66px;height:66px;flex-shrink:0;}
+.ring svg{transform:rotate(-90deg);width:100%;height:100%;}
+.ring .bgc{stroke:rgba(140,180,220,.16);}
+.ring .fgc{stroke:url(#ringGrad);stroke-linecap:round;transition:stroke-dashoffset 1.4s var(--ease);}
+.ring b{
+  position:absolute;inset:0;display:grid;place-items:center;
+  font-family:var(--font-mono);font-size:14px;color:#fff;
+}
+.ring b i{font-style:normal;font-size:9px;color:var(--cyan);margin-left:1px;}
+.report-rows{margin-top:16px;display:grid;gap:11px;}
+.rowth{display:flex;gap:10px;font-size:12.5px;align-items:flex-start;}
+.rowth .k{width:52px;flex-shrink:0;color:var(--muted);font-family:var(--font-mono);font-size:11px;letter-spacing:.04em;padding-top:2px;}
+.rowth .v{color:var(--text-2);line-height:1.65;}
+.rowth .v b{color:#eafaff;font-weight:600;}
+.badge{display:inline-block;padding:1px 7px;border-radius:5px;font-family:var(--font-mono);font-size:10px;letter-spacing:.05em;border:1px solid;}
+.badge.red{color:var(--red);border-color:rgba(255,77,109,.4);background:rgba(255,77,109,.1);}
+.badge.cyan{color:var(--cyan);border-color:rgba(0,229,255,.38);background:rgba(0,229,255,.08);}
+
+.err-bars{margin-top:18px;padding-top:16px;border-top:1px solid rgba(140,180,220,.12);}
+.err-bars .h{font-family:var(--font-mono);font-size:10px;letter-spacing:.16em;color:var(--muted);text-transform:uppercase;margin-bottom:14px;display:flex;justify-content:space-between;}
+.err-bars .h b{color:var(--cyan);}
+.bar-row{margin-bottom:12px;}
+.bar-row .lab{display:flex;justify-content:space-between;font-size:11.5px;color:var(--text-2);margin-bottom:6px;}
+.bar-row .lab b{font-family:var(--font-mono);color:#fff;font-weight:500;}
+.track{height:7px;border-radius:99px;background:rgba(140,180,220,.1);overflow:hidden;}
+.fill{height:100%;width:0;border-radius:99px;transition:width 1.5s var(--ease);}
+.fill.ai{background:linear-gradient(90deg,var(--cyan),#8ff5ff);box-shadow:0 2px 10px -4px rgba(0,229,255,.5);}
+.fill.clin{background:linear-gradient(90deg,rgba(140,180,220,.6),rgba(180,215,240,.8));}
+.fill.truth{background:linear-gradient(90deg,var(--red),var(--amber));box-shadow:0 2px 10px -4px rgba(255,77,109,.45);}
+.report-foot{margin-top:14px;display:flex;justify-content:space-between;align-items:center;font-family:var(--font-mono);font-size:10px;color:var(--muted);letter-spacing:.06em;}
+.report-foot .live{display:flex;align-items:center;gap:6px;color:var(--cyan);}
+.report-foot .live i{width:5px;height:5px;border-radius:50%;background:var(--cyan);box-shadow:0 2px 6px -2px rgba(0,229,255,.5);}
+/* ============================================================
+   10. 工作流 / DICOM 闭环
+   ============================================================ */
+.flow{position:relative;margin-top:12px;}
+.flow-svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible;}
+.flow-svg path{fill:none;stroke:rgba(0,229,255,.22);stroke-width:1.4;stroke-dasharray:5 7;}
+.flow-svg path.flowline{
+  stroke:rgba(0,229,255,.85);stroke-width:2;stroke-dasharray:34 260;
+  filter:drop-shadow(0 0 6px rgba(0,229,255,.9));
+  animation:dashMove 3.2s linear infinite;
+}
+@keyframes dashMove{to{stroke-dashoffset:-294;}}
+.flow-nodes{position:relative;display:grid;grid-template-columns:repeat(6,1fr);gap:14px;}
+.node{
+  position:relative;padding:20px 16px;border-radius:var(--r-md);text-align:center;
+  background:linear-gradient(170deg,rgba(18,32,52,.7),rgba(8,16,27,.6));
+  border:1px solid rgba(140,180,220,.13);
+  transition:transform .45s var(--ease),border-color .45s,box-shadow .45s;
+}
+.node:hover{transform:translateY(-6px);border-color:rgba(0,229,255,.45);box-shadow:0 26px 50px -30px rgba(0,229,255,.85);}
+.node .n{
+  width:38px;height:38px;margin:0 auto 12px;border-radius:11px;display:grid;place-items:center;
+  background:rgba(0,229,255,.08);border:1px solid rgba(0,229,255,.25);
+}
+.node .n svg{width:19px;height:19px;stroke:var(--cyan);fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;}
+.node h4{font-size:13.5px;font-weight:650;}
+.node p{margin-top:6px;font-size:11.5px;color:var(--muted);line-height:1.6;}
+.node .step{
+  position:absolute;top:10px;right:12px;font-family:var(--font-mono);font-size:9.5px;color:rgba(0,229,255,.45);letter-spacing:.08em;
+}
+.node.loop::after{
+  content:"";position:absolute;inset:-1px;border-radius:inherit;border:1px dashed rgba(255,77,109,.35);
+  animation:dashRotate 22s linear infinite;
+}
+@keyframes dashRotate{to{transform:rotate(360deg);}}
+
+/* ============================================================
+   11. 技术栈矩阵
+   ============================================================ */
+.stack-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;}
+.tech{
+  position:relative;padding:22px 18px;border-radius:var(--r-md);overflow:hidden;
+  background:linear-gradient(160deg,rgba(16,30,48,.62),rgba(8,15,26,.5));
+  border:1px solid rgba(140,180,220,.11);
+  transition:transform .45s var(--ease),border-color .45s,background .45s;
+}
+.tech:hover{transform:translateY(-5px);border-color:rgba(0,229,255,.4);background:linear-gradient(160deg,rgba(22,40,62,.8),rgba(9,18,30,.6));}
+.tech .tk{display:flex;align-items:center;gap:10px;}
+.tech .tk svg{width:22px;height:22px;flex-shrink:0;}
+.tech .tk b{font-size:14px;font-weight:700;letter-spacing:.01em;}
+.tech .tk span{font-family:var(--font-mono);font-size:9.5px;color:var(--muted);letter-spacing:.08em;}
+.tech p{margin-top:9px;font-size:11.5px;color:var(--muted);line-height:1.6;}
+.tech .bar{
+  position:absolute;left:0;right:0;bottom:0;height:2px;
+  background:linear-gradient(90deg,transparent,rgba(0,229,255,.5),transparent);
+  transform:scaleX(0);transition:transform .6s var(--ease);
+}
+.tech:hover .bar{transform:scaleX(1);}
+.tech.wide{grid-column:span 2;}
+
+/* ============================================================
+   12. 页脚
+   ============================================================ */
+.cta-final{
+  position:relative;padding:88px 0 54px;text-align:center;overflow:hidden;
+  border-top:1px solid rgba(140,180,220,.1);
+  background:radial-gradient(900px 420px at 50% 0%,rgba(0,229,255,.12),transparent 62%),linear-gradient(180deg,rgba(8,15,26,.4),rgba(4,8,14,.9));
+}
+.cta-final h2{font-size:clamp(26px,3.6vw,44px);font-weight:850;line-height:1.25;letter-spacing:-.02em;}
+.cta-final h2 em{font-style:normal;color:var(--cyan);}
+.cta-final p{margin:18px auto 0;max-width:560px;color:var(--text-2);font-size:15px;}
+.cta-final .actions{display:flex;justify-content:center;gap:14px;flex-wrap:wrap;margin-top:34px;}
+/* position/z-index 必需：.bg-layer 是 fixed z-index:0，footer 若留在 static 会被整个盖住 */
+/* 页脚：两行收尾。第一行品牌 + 导航，第二行版权。不再堆数据字段。 */
+.site-foot{position:relative;z-index:2;padding:36px 0 30px;background:#04080e;border-top:1px solid rgba(140,180,220,.08);}
+.foot-inner{display:flex;justify-content:space-between;align-items:flex-start;gap:28px;flex-wrap:wrap;}
+.foot-inner .l{display:flex;align-items:center;gap:12px;}
+.foot-inner .l svg{width:26px;height:26px;opacity:.8;}
+.foot-inner .l div{line-height:1.5;}
+.foot-inner .l b{font-size:13.5px;font-weight:600;}
+.foot-inner .l span{display:block;margin-top:3px;font-family:var(--font-mono);font-size:11px;letter-spacing:.14em;color:rgba(150,175,205,.9);}
+.foot-links{display:flex;gap:20px;font-size:13px;color:rgba(160,180,205,.9);flex-wrap:wrap;}
+.foot-links a:hover{color:var(--cyan);}
+.copy{margin-top:22px;padding-top:16px;border-top:1px solid rgba(140,180,220,.06);
+  font-family:var(--font-mono);font-size:11.5px;letter-spacing:.05em;line-height:1.7;
+  color:rgba(150,172,198,.7);text-align:left;}
+@media(max-width:760px){
+  .foot-inner{flex-direction:column;align-items:flex-start;gap:16px;}
+  .copy{margin-top:18px;font-size:11px;}
+}
+
+/* ============================================================
+   13. 响应式
+   ============================================================ */
+
+/* 大屏（全屏 1440p/1080p）：内容随视口放大，避免中间留白过多 */
+@media (min-width:1560px){
+  .wrap{width:min(1440px,calc(100% - 96px));}
+  .hero{padding:132px 0 72px;}
+  .hero-inner{grid-template-columns:.88fr 1.12fr;gap:48px;}
+  .hero-copy{max-width:640px;}
+  .hero-title{font-size:clamp(40px,3.35vw,64px);}
+  .hero-sub{font-size:17.5px;max-width:560px;}
+  .hero-meta{gap:30px;margin-top:40px;padding-top:26px;}
+  .stage{max-width:780px;}
+  .sec{padding:118px 0;}
+  .cards{gap:22px;}
+  .card{padding:32px 30px 30px;}
+}
+/* 2K / 4K 全屏 */
+@media (min-width:2200px){
+  .wrap{width:min(1800px,calc(100% - 120px));}
+  .hero{padding:146px 0 88px;}
+  .hero-inner{gap:64px;}
+  .hero-copy{max-width:760px;}
+  .hero-title{font-size:clamp(52px,2.9vw,74px);}
+  .hero-sub{font-size:19px;max-width:640px;}
+  .stage{max-width:960px;}
+  .sec{padding:136px 0;}
+}
+
+@media (max-width:1180px){
+  .hero-inner{grid-template-columns:1fr;gap:10px;}
+  .stage{max-width:560px;margin:24px auto 0;}
+  .hero-copy{max-width:none;}
+  .hero{padding-top:118px;}
+  .dual{grid-template-columns:1fr;gap:32px;}
+  .ai-grid{grid-template-columns:1fr;gap:34px;}
+  .cards{grid-template-columns:repeat(2,1fr);}
+  .stack-grid{grid-template-columns:repeat(3,1fr);}
+  .tech.wide{grid-column:span 3;}
+  .flow-nodes{grid-template-columns:repeat(3,1fr);}
+  .flow-svg{display:none;}
+  .metrics-grid{grid-template-columns:repeat(3,1fr);}
+  .metric:nth-child(4){border-left:0;}
+  .metric{border-top:1px solid rgba(140,180,220,.08);}
+}
+@media (max-width:900px){
+  .nav-menu{
+    position:fixed;left:16px;right:16px;top:76px;flex-direction:column;align-items:stretch;
+    padding:12px;border-radius:16px;gap:2px;
+    background:rgba(7,14,24,.96);border:1px solid rgba(0,229,255,.18);
+    backdrop-filter:blur(18px);
+    transform:translateY(-12px) scale(.98);opacity:0;visibility:hidden;
+    transition:.35s var(--ease);
+    box-shadow:0 30px 60px -30px #000;
+  }
+  .nav.is-open .nav-menu{transform:none;opacity:1;visibility:visible;}
+  .nav-menu a{padding:12px 14px;border-radius:10px;font-size:14px;}
+  .burger{display:block;margin-left:auto;order:2;}
+  .nav-cta{order:3;}
+  .nav-cta .btn{padding:9px 16px;font-size:12.5px;}
+  .sec{padding:76px 0;}
+  .sec-head{margin-bottom:36px;}
+  .stage-hint{font-size:9px;}
+  .ecg{display:none;}
+}
+@media (max-width:640px){
+  .wrap{width:calc(100% - 32px);}
+  .hero{padding:104px 0 48px;min-height:auto;}
+  .hero-title{font-size:clamp(28px,9vw,38px);}
+  .hero-sub{font-size:14.5px;}
+  .hero-actions .btn{flex:1 1 auto;}
+  .hero-meta{gap:16px;}
+  .metrics-grid{grid-template-columns:repeat(2,1fr);}
+  .metric:nth-child(odd){border-left:0;}
+  .cards{grid-template-columns:1fr;}
+  .stack-grid{grid-template-columns:1fr 1fr;}
+  .tech.wide{grid-column:span 2;}
+  .flow-nodes{grid-template-columns:1fr 1fr;}
+  .orbit-tag{font-size:9px;padding:5px 9px;}
+  .orbit-tag.t2{right:0;}
+  .panel-stage{aspect-ratio:1/1;}
+  .site-foot .foot-inner{flex-direction:column;align-items:flex-start;}
+  .report{padding:16px;}
+}
+
+/* 减少动效偏好 */
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.08s!important;}
+  html{scroll-behavior:auto;}
+  .reveal,.reveal-l,.reveal-r,.reveal-s{opacity:1!important;transform:none!important;}
+}
+</style>
+</head>
+<body>
+<!-- ================= 全局背景层 ================= -->
+<div class="bg-layer" aria-hidden="true">
+  <div class="bg-base"></div>
+  <div class="bg-grid"></div>
+  <canvas id="bgParticles"></canvas>
+  <div class="bg-noise"></div>
+  <div class="bg-scan"></div>
+</div>
+<div id="scrollProgress" aria-hidden="true"></div>
+
+<!-- ================= 顶部导航 ================= -->
+<header class="nav" id="nav">
+  <div class="wrap nav-inner">
+    <a href="#hero" class="brand" aria-label="心脏 CT 3D 可视化系统首页">
+      <span class="brand-mark">
+        <!-- Logo：心脏轮廓 + CT 扫描环 + 十字准星 -->
+        <svg viewBox="0 0 40 40" role="img" aria-hidden="true">
+          <defs>
+            <linearGradient id="lgHeart" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="#00e5ff"/><stop offset="100%" stop-color="#22d3ee"/>
+            </linearGradient>
+            <linearGradient id="lgRed" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="#ff4d6d"/><stop offset="100%" stop-color="#ff9f7a"/>
+            </linearGradient>
+          </defs>
+          <path d="M20 33.5C20 33.5 6.5 25.4 6.5 16.2 6.5 11.6 10.2 8 14.6 8c2.6 0 4.5 1.2 5.4 2.9C20.9 9.2 22.8 8 25.4 8c4.4 0 8.1 3.6 8.1 8.2 0 9.2-13.5 17.3-13.5 17.3z"
+                fill="none" stroke="url(#lgRed)" stroke-width="1.9" stroke-linejoin="round"/>
+          <circle cx="20" cy="19.6" r="11.4" fill="none" stroke="url(#lgHeart)" stroke-width="1" opacity=".55" stroke-dasharray="3 4"/>
+          <circle cx="20" cy="19.6" r="14.6" fill="none" stroke="url(#lgHeart)" stroke-width=".7" opacity=".28"/>
+          <path d="M20 9.2v4.4M20 26v4.6M9.6 19.6h4.2M26.2 19.6h4.2" stroke="#00e5ff" stroke-width="1.1" stroke-linecap="round" opacity=".85"/>
+          <circle cx="20" cy="19.6" r="1.5" fill="#00e5ff"/>
+        </svg>
+      </span>
+      <span class="brand-txt">
+        <b>心脏 CT 3D 可视化</b>
+        <span>Heart CT · 3D Visualization</span>
+      </span>
+    </a>
+
+    <nav class="nav-menu" id="navMenu" aria-label="主导航">
+      <a href="#features">功能</a>
+      <a href="#capability">能力</a>
+      <a href="#workflow">工作流</a>
+      <a href="#stack">技术栈</a>
+      <a href="#about">关于</a>
+    </nav>
+
+    <button class="burger" id="burger" aria-label="展开菜单" aria-expanded="false">
+      <span></span><span></span><span></span>
+    </button>
+
+    <div class="nav-cta">
+      <a href="/login" class="btn btn-primary" data-ripple>
+        进入系统
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13M12 5l7 7-7 7"/></svg>
+      </a>
+    </div>
+  </div>
+</header>
+
+<main>
+<!-- ================= HERO ================= -->
+<section class="hero" id="hero">
+  <div class="hero-glow" aria-hidden="true"></div>
+  <div class="hero-glow red" aria-hidden="true"></div>
+  <div class="wrap hero-inner">
+
+    <!-- 左：文案 -->
+    <div class="hero-copy">
+      <h1 class="hero-title reveal" style="--d:80ms">
+        <span class="line">让心脏 CT 影像，</span>
+        <span class="line accent">在三维空间里被看见</span>
+      </h1>
+      <p class="hero-sub reveal" style="--d:160ms">
+        <strong>Heart CT 3D Visualization System</strong> —— 把 CT 影像从「一张张切片」变成
+        <span class="hl">可交互的三维心脏</span>。150 万三角面的解剖模型、VTK.js 体绘制与三方向剖切、
+        逐病灶 AI 推理结构化报告，全部在本地浏览器里跑通，用于<strong>病灶观察与教学演示</strong>。
+      </p>
+      <div class="hero-actions reveal" style="--d:240ms">
+        <a href="#capability" class="btn btn-primary btn-lg" data-ripple>
+          进入演示系统
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13M12 5l7 7-7 7"/></svg>
+        </a>
+        <a href="#features" class="btn btn-ghost btn-lg" data-ripple>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 5.5v13l11-6.5-11-6.5z"/></svg>
+          观看功能亮点
+        </a>
+      </div>
+      <div class="hero-meta reveal" style="--d:320ms">
+        <div><b>Vue3<i>+</i>VTK.js</b><span>前端渲染内核</span></div>
+        <div><b>FastAPI</b><span>后端服务</span></div>
+        <div><b>MySQL</b><span>病例与病灶库</span></div>
+        <div><b>Python 3.11</b><span>AI 分析流水线</span></div>
+      </div>
+    </div>
+
+    <!-- 右：3D 心脏舞台 -->
+    <div class="stage reveal-s" style="--d:200ms" id="stage">
+      <div class="stage-frame" aria-hidden="true"></div>
+      <div class="stage-frame f2" aria-hidden="true"></div>
+      <div class="stage-frame f3" aria-hidden="true"></div>
+      <canvas id="heartCanvas" aria-label="可交互的三维心脏解剖模型（拖拽旋转、滚轮缩放）"></canvas>
+      <canvas id="heartCanvas2d" aria-hidden="true"></canvas>
+
+      <div class="stage-load" id="stageLoad">
+        <span class="mono">LOADING ANATOMICAL MODEL</span>
+        <div class="bar"><i id="stageBar"></i></div>
+        <em class="mono" id="stagePct">0%</em>
+        <span class="mono stage-slices" id="stageSlices">0 / 2304 片</span>
+      </div>
+
+      <div class="orbit-tag t1"><i></i><b>1,500,000</b> 三角面</div>
+      <div class="orbit-tag t2"><i></i><b>2304</b> DICOM 片</div>
+      <div class="orbit-tag t3"><i></i><b>22</b> 处病灶 · 13 病例</div>
+
+      <div class="ecg" aria-hidden="true"><canvas id="ecgCanvas"></canvas></div>
+
+      <div class="stage-hint mono">
+        <span>拖拽 <b>ROTATE</b></span>
+        <span>滚轮 <b>ZOOM</b></span>
+        <span>双击 <b>RESET</b></span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 数据条 ================= -->
+<section class="metrics" id="metrics" aria-label="系统关键数据">
+  <div class="wrap">
+    <div class="metrics-grid">
+      <div class="metric reveal" style="--d:0ms">
+        <div class="num"><span class="count" data-to="13">0</span><span class="suffix">例</span></div>
+        <div class="lab">病例档案 · <b>P0001–P0010 等</b></div>
+      </div>
+      <div class="metric reveal" style="--d:80ms">
+        <div class="num"><span class="count" data-to="22">0</span><span class="suffix">处</span></div>
+        <div class="lab">已标注病灶 · <b>三维投影</b></div>
+      </div>
+      <div class="metric reveal" style="--d:160ms">
+        <div class="num"><span class="count" data-to="2304">0</span><span class="suffix">片</span></div>
+        <div class="lab">DICOM 序列 · <b>256×256×1mm</b></div>
+      </div>
+      <div class="metric reveal" style="--d:240ms">
+        <div class="num"><span class="count" data-to="4">0</span><span class="suffix">阶段</span></div>
+        <div class="lab">AI 推理流水线 · <b>逐病灶</b></div>
+      </div>
+      <div class="metric reveal" style="--d:320ms">
+        <div class="num"><span class="count" data-to="3">0</span><span class="suffix">切面</span></div>
+        <div class="lab">MPR 实时联动 · <b>± 测距</b></div>
+      </div>
+    </div>
+  </div>
+</section>
+<!-- ================= 核心功能 ================= -->
+<section class="sec" id="features">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2 class="sec-title reveal" style="--d:60ms">六项真实落地能力，<em>一条影像闭环</em></h2>
+      <p class="sec-desc reveal" style="--d:120ms">
+        从登录鉴权到 DICOM 上传导入，从 3D 心脏旋转到病灶级 AI 报告 —— 所有模块都在本地跑通，
+        数据不出内网，可直接用于<strong>课堂演示与影像教学</strong>。
+      </p>
+    </div>
+
+    <div class="cards" id="cardGrid">
+      <!-- 1 -->
+      <article class="card reveal" style="--d:0ms">
+        <div class="card-in">
+          <div class="ico">
+            <svg viewBox="0 0 24 24"><rect x="4" y="10" width="16" height="10" rx="2.5"/><path d="M8 10V7.5a4 4 0 0 1 8 0V10"/><circle cx="12" cy="15" r="1.4"/></svg>
+          </div>
+          <h3>账号登录与权限管理</h3>
+          <p>管理员账号体系，登录态校验后方可进入工作台；<b>病例数据仅对已授权账号可见</b>，符合教学演示环境的权限边界。</p>
+          <div class="tags"><span>ADMIN AUTH</span><span>SESSION</span><span>RBAC</span></div>
+        </div>
+      </article>
+
+      <!-- 2 -->
+      <article class="card reveal" style="--d:70ms">
+        <div class="card-in">
+          <div class="ico">
+            <svg viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="2"/><path d="M3.5 9h17M9 9v10.5"/><path d="M12.6 12.4h4.6M12.6 15.6h3.2"/></svg>
+          </div>
+          <h3>病例列表管理</h3>
+          <p><b>13 个病例、22 处病灶</b>入库管理，支持新建 / 编辑 / 删除档案；检查号全局唯一，删除病例时联动清理病灶与体数据文件。</p>
+          <div class="tags"><span>13 CASES</span><span>22 LESIONS</span><span>CRUD</span></div>
+        </div>
+      </article>
+
+      <!-- 3 重点 -->
+      <article class="card hot reveal" style="--d:140ms">
+        <span class="glowbar"></span>
+        <div class="card-in">
+          <div class="ico">
+            <svg viewBox="0 0 24 24"><path d="M12 3.2c-3.6 1.4-6 4.2-6 7.6 0 4.6 3.4 8 6 10 2.6-2 6-5.4 6-10 0-3.4-2.4-6.2-6-7.6z"/><path d="M9.4 11.2h1.7l1 2.2 1.4-3.6 1.1 1.4h1.4"/></svg>
+          </div>
+          <h3>3D 双模式视图 <span class="pin">CORE</span></h3>
+          <p><b>解剖模型</b>：150 万三角面 glb（心脏 + 冠脉 + 肺血管树 + 贴图），拖拽旋转、滚轮缩放，病灶以<b>黄色发光球</b>投影到模型表面。<b>体数据渲染</b>：VTK.js 体绘制，窗宽窗位、三方向剖切、一键重置。</p>
+          <div class="tags"><span>GLB 1.5M TRIS</span><span>VTK.JS</span><span>WINDOW/WIDTH</span></div>
+        </div>
+      </article>
+
+      <!-- 4 重点 -->
+      <article class="card hot reveal" style="--d:210ms">
+        <span class="glowbar"></span>
+        <div class="card-in">
+          <div class="ico">
+            <svg viewBox="0 0 24 24"><path d="M12 3v18M3 12h18"/><circle cx="12" cy="12" r="8.2"/><path d="M6.6 6.6l10.8 10.8"/></svg>
+          </div>
+          <h3>剖切视图双模式 <span class="pin">CORE</span></h3>
+          <p><b>三方向 3D 剖切</b>：把 glb 沿轴位 / 冠状 / 矢状实时剖开，切面渲染成<b>实心心肌</b>（暗红渐层、中心渐暗模拟心腔）。<b>2D 精读</b>：标准 MPR 三切面实时联动，支持任意两点测距。</p>
+          <div class="tags"><span>CLIPPING PLANES</span><span>MPR</span><span>MEASURE</span></div>
+        </div>
+      </article>
+
+      <!-- 5 重点 -->
+      <article class="card hot red reveal" style="--d:280ms">
+        <span class="glowbar"></span>
+        <div class="card-in">
+          <div class="ico">
+            <svg viewBox="0 0 24 24"><path d="M12 2.8l1.9 4.4 4.7.5-3.5 3.2 1 4.7-4.1-2.4-4.1 2.4 1-4.7L5.4 7.7l4.7-.5z"/><path d="M6 18.5h12M8.5 21h7"/></svg>
+          </div>
+          <h3>AI 病灶分析 <span class="pin">AI</span></h3>
+          <p>四阶段流水线<b>逐病灶推理</b>，返回结构化 JSON（类型 / 重度 / 阈值 / 层厚 / 置信度 / 所见 / 建议）。前端实时展示推理阶段、进度、已用秒数与 tokens；报告按病灶卡片化，并给出 <b>AI 参数 / 临床默认 / 仿真真值</b> 三方体积误差对比。</p>
+          <div class="tags"><span>LLM</span><span>HU FEATURE</span><span>VERIFY</span><span>TOKENS</span></div>
+        </div>
+      </article>
+
+      <!-- 6 -->
+      <article class="card reveal" style="--d:350ms">
+        <div class="card-in">
+          <div class="ico">
+            <svg viewBox="0 0 24 24"><path d="M12 15.5V4.5M8.4 8.1L12 4.5l3.6 3.6"/><path d="M4.5 14v4.5a1.5 1.5 0 0 0 1.5 1.5h12a1.5 1.5 0 0 0 1.5-1.5V14"/></svg>
+          </div>
+          <h3>DICOM 影像闭环</h3>
+          <p><b>12 例序列、2304 片</b>（256×256、层厚 1 mm、像素即 HU）；DICOM / NPY 双向切换、序列 zip 下载、外部 DICOM 上传导入，上传后即可直接新建档案并三维重建。</p>
+          <div class="tags"><span>2304 SLICES</span><span>ZIP</span><span>IMPORT</span></div>
+        </div>
+      </article>
+    </div>
+  </div>
+</section>
+
+<hr class="hr-glow" />
+
+<!-- ================= 双模式可视化 ================= -->
+<section class="sec" id="capability">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2 class="sec-title reveal" style="--d:60ms">同一个心脏，<em>两套看法</em></h2>
+      <p class="sec-desc reveal" style="--d:120ms">解剖模型看「形态与血管走行」，体数据渲染看「密度与内部结构」。左侧一组开关即可切换，切换时窗宽窗位与剖切面板联动启用 / 置灰。</p>
+    </div>
+
+    <div class="dual">
+      <!-- 左：描述 -->
+      <div class="dual-desc">
+        <div class="tabs reveal" id="dualTabs" role="tablist" aria-label="可视化模式切换">
+          <span class="thumb" id="tabThumb" aria-hidden="true"></span>
+          <button type="button" class="on" role="tab" aria-selected="true" data-mode="anatomy">解剖模型</button>
+          <button type="button" role="tab" aria-selected="false" data-mode="volume">体数据渲染</button>
+        </div>
+
+        <div class="reveal" style="--d:60ms" id="descAnatomy">
+          <h3>解剖模型 · Anatomical Model</h3>
+          <p>加载 73.3 MB 的 <span class="mono">heart_model.glb</span>，150 万三角面承载心脏本体、冠状动脉与肺血管树，外加三张贴图。页面载入即自动居中、等比缩放至视口。</p>
+          <ul class="feature-list">
+            <li><svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg><span><b>自由视角</b>：拖拽旋转 / 滚轮缩放，双击复位</span></li>
+            <li><svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg><span><b>病例专属模型</b>：探测 <span class="mono">case_01.glb</span>，命中即自动替换，无需改代码</span></li>
+            <li><svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg><span><b>病灶投影</b>：22 处病灶按解剖位置打黄球，与 MPR 口径一致</span></li>
+          </ul>
+        </div>
+
+        <div class="reveal" style="--d:60ms;display:none" id="descVolume">
+          <h3>体数据渲染 · Volume Rendering</h3>
+          <p>VTK.js 直接吃 <span class="mono">256×256×192</span> 的 float32 HU 体数据做体绘制，配合窗宽窗位与三方向剖切，观察心肌密度与病灶边界。</p>
+          <ul class="feature-list">
+            <li><svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg><span><b>窗宽窗位</b>：默认 600 / 120，实时重采样</span></li>
+            <li><svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg><span><b>三方向剖切</b>：轴位 Z / 冠状 Y / 矢状 X 三滑块联动</span></li>
+            <li><svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg><span><b>一键重置</b>：相机与切面回到标准初始位</span></li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- 右：舞台 -->
+      <div class="panel-stage reveal-s" style="--d:120ms" id="panelStage">
+        <span class="corner tl"></span><span class="corner tr"></span><span class="corner bl"></span><span class="corner br"></span>
+
+        <div class="panel on" id="panelAnatomy" role="tabpanel">
+          <canvas id="anatomyCanvas" aria-label="解剖模型旋转示意"></canvas>
+          <div class="panel-hud">
+            <span class="chip">MODE · ANATOMY</span>
+            <span class="chip amber">LESIONS 22</span>
+          </div>
+        </div>
+
+        <div class="panel" id="panelVolume" role="tabpanel">
+          <canvas id="volumeCanvas" aria-label="体数据剖切示意"></canvas>
+          <div class="panel-hud">
+            <span class="chip">MODE · VOLUME</span>
+            <span class="chip red">WW 600 / WL 120</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+<hr class="hr-glow" />
+
+<!-- ================= AI 病灶分析 ================= -->
+<section class="sec" id="ai">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2 class="sec-title reveal" style="--d:60ms">四个阶段，<em>把数字变成结论</em></h2>
+      <p class="sec-desc reveal" style="--d:120ms">提示词里的每一个数字都来自实测 HU 统计，不是让模型「猜」。结果经规则校验后才落到报告卡上，越界参数会被修正并留痕。</p>
+    </div>
+
+    <div class="ai-grid">
+      <!-- 左：流水线 -->
+      <div class="pipe">
+        <div class="stage-item reveal" style="--d:0ms">
+          <span class="dot mono">01</span>
+          <h4>读取体数据 <span class="t">stage · volume</span></h4>
+          <p>定位病灶所在体素，取球内区域做 <code>float32</code> HU 采样，同时读取层厚与像素间距。</p>
+        </div>
+
+        <div class="stage-item reveal" style="--d:90ms">
+          <span class="dot mono">02</span>
+          <h4>实测 HU 特征 <span class="t">stage · feature</span></h4>
+          <p>统计球内 <b>均值 / 中位数 / P90 / P95 / 峰值 / 最小 / SD</b>，再取背景环（r+2～r+9）算均值 ± SD 与 ±3SD —— 这组数据是提示词的<b>唯一事实来源</b>。</p>
+        </div>
+
+        <div class="stage-item reveal" style="--d:180ms">
+          <span class="dot mono">03</span>
+          <h4>大模型推理 <span class="t">stage · llm</span></h4>
+          <p>逐病灶单独请求，返回结构化 JSON：类型、重度、阈值、层厚、置信度、所见、建议。前端同步显示阶段、进度、已用秒数与 tokens 用量。</p>
+        </div>
+
+        <div class="stage-item reveal" style="--d:270ms">
+          <span class="dot mono">04</span>
+          <h4>结果校验 <span class="t">stage · verify</span></h4>
+          <p>高密度灶阈值须落在 <code>[背景均值+3SD, 峰值×90%]</code>，低密度灶方向相反；直径 ≤30 mm 的灶层厚一律夹到 1 层。越界即修正留痕，漏字段按规则兜底。</p>
+        </div>
+      </div>
+
+      <!-- 右：报告卡 -->
+      <div class="report reveal-r" style="--d:120ms" id="reportCard">
+        <svg width="0" height="0" aria-hidden="true">
+          <defs>
+            <linearGradient id="ringGrad" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="#00e5ff"/><stop offset="100%" stop-color="#ff4d6d"/>
+            </linearGradient>
+          </defs>
+        </svg>
+
+        <div class="report-top">
+          <div>
+            <div class="t1">Lesion Report · Card 01/05</div>
+            <div class="t2">LAD 近段钙化斑块</div>
+            <div class="t3">P0003 · 病灶 #2 · 球内峰值 986 HU</div>
+          </div>
+          <div class="ring">
+            <svg viewBox="0 0 72 72">
+              <circle class="bgc" cx="36" cy="36" r="30" fill="none" stroke-width="6"/>
+              <circle class="fgc" id="ringFg" cx="36" cy="36" r="30" fill="none" stroke-width="6"
+                      stroke-dasharray="188.5" stroke-dashoffset="188.5"/>
+            </svg>
+            <b><span id="ringVal">0</span><i>%</i></b>
+          </div>
+        </div>
+
+        <div class="report-rows">
+          <div class="rowth"><span class="k">类型</span><span class="v"><b>钙化斑块</b> · 高密度灶</span></div>
+          <div class="rowth"><span class="k">重度</span><span class="v"><span class="badge red">重度</span> 管腔面积狭窄约 62%</span></div>
+          <div class="rowth"><span class="k">阈值</span><span class="v mono">≥ 412 HU · 层厚 1 mm（已按小灶规则夹取）</span></div>
+          <div class="rowth"><span class="k">所见</span><span class="v">LAD 近段见团块状高密度影，边界清晰，与背景环对比度显著，符合钙化性斑块表现。</span></div>
+          <div class="rowth"><span class="k">建议</span><span class="v">结合 CTA 与临床评分评估血流动力学意义；建议随访复查并纳入教学讨论。</span></div>
+        </div>
+
+        <div class="err-bars">
+          <div class="h"><span>Volume Comparison</span><b>三方体积 / 误差</b></div>
+
+          <div class="bar-row">
+            <div class="lab"><span>AI 参数（模型输出）</span><b class="mono">24.8 mm³ · −1.7%</b></div>
+            <div class="track"><div class="fill ai" data-w="97"></div></div>
+          </div>
+          <div class="bar-row">
+            <div class="lab"><span>临床默认（经验阈值）</span><b class="mono">23.1 mm³ · −8.4%</b></div>
+            <div class="track"><div class="fill clin" data-w="88"></div></div>
+          </div>
+          <div class="bar-row">
+            <div class="lab"><span>仿真真值（独立标注）</span><b class="mono">25.2 mm³ · 基准</b></div>
+            <div class="track"><div class="fill truth" data-w="100"></div></div>
+          </div>
+        </div>
+
+        <div class="report-foot">
+          <span class="live"><i></i>VERIFIED · 2 项留痕</span>
+          <span id="reportMeta">12.4 s · 3862 tokens</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<hr class="hr-glow" />
+
+<!-- ================= 工作流 / DICOM 闭环 ================= -->
+<section class="sec" id="workflow">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2 class="sec-title reveal" style="--d:60ms">从一份 DICOM 序列，<em>到一页可讲的分析报告</em></h2>
+      <p class="sec-desc reveal" style="--d:120ms">上传一份外部序列，系统当场上演「解包 → 校验 → 重建 → 剖切 → 推理 → 报告」的完整链路，最后可下载原始 zip 归档。</p>
+    </div>
+
+    <div class="flow reveal" style="--d:80ms">
+      <svg class="flow-svg" viewBox="0 0 1200 120" preserveAspectRatio="none" aria-hidden="true">
+        <path d="M100 60 C 180 60, 180 60, 300 60" />
+        <path d="M300 60 C 380 60, 380 60, 500 60" />
+        <path d="M500 60 C 580 60, 580 60, 700 60" />
+        <path d="M700 60 C 780 60, 780 60, 900 60" />
+        <path d="M900 60 C 980 60, 980 60, 1100 60" />
+        <path class="flowline" d="M100 60 C 180 60, 180 60, 300 60" />
+        <path class="flowline" d="M300 60 C 380 60, 380 60, 500 60" style="animation-delay:.45s"/>
+        <path class="flowline" d="M500 60 C 580 60, 580 60, 700 60" style="animation-delay:.9s"/>
+        <path class="flowline" d="M700 60 C 780 60, 780 60, 900 60" style="animation-delay:1.35s"/>
+        <path class="flowline" d="M900 60 C 980 60, 980 60, 1100 60" style="animation-delay:1.8s"/>
+      </svg>
+
+      <div class="flow-nodes">
+        <div class="node reveal" style="--d:0ms">
+          <span class="step mono">01</span>
+          <div class="n"><svg viewBox="0 0 24 24"><path d="M12 15.5V4M8.4 7.6L12 4l3.6 3.6"/><path d="M4.5 14v5.5h15V14"/></svg></div>
+          <h4>上传 DICOM</h4>
+          <p>zip 上传 · ≤500 MB / ≤1200 片</p>
+        </div>
+        <div class="node reveal" style="--d:70ms">
+          <span class="step mono">02</span>
+          <div class="n"><svg viewBox="0 0 24 24"><rect x="4" y="3.5" width="16" height="17" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg></div>
+          <h4>解析体数据</h4>
+          <p>尺寸一致性与体积上限校验</p>
+        </div>
+        <div class="node reveal" style="--d:140ms">
+          <span class="step mono">03</span>
+          <div class="n"><svg viewBox="0 0 24 24"><path d="M12 3.2l7.5 3.9v9.8L12 20.8 4.5 16.9V7.1z"/><path d="M12 12l7.4-3.8M12 12v8.6M12 12L4.6 8.2"/></svg></div>
+          <h4>三维重建</h4>
+          <p>解剖模型 / 体绘制双通道</p>
+        </div>
+        <div class="node reveal" style="--d:210ms">
+          <span class="step mono">04</span>
+          <div class="n"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.4"/><path d="M12 3.6v16.8M3.6 12h16.8"/></svg></div>
+          <h4>剖切观察</h4>
+          <p>三方向 3D 剖切 / MPR 精读</p>
+        </div>
+        <div class="node reveal loop" style="--d:280ms">
+          <span class="step mono">05</span>
+          <div class="n"><svg viewBox="0 0 24 24"><path d="M12 3.4l1.9 4.4 4.7.5-3.5 3.2 1 4.7L12 13.7l-4.1 2.5 1-4.7L5.4 8.3l4.7-.5z"/></svg></div>
+          <h4>AI 分析</h4>
+          <p>四阶段 · 逐病灶 JSON</p>
+        </div>
+        <div class="node reveal" style="--d:350ms">
+          <span class="step mono">06</span>
+          <div class="n"><svg viewBox="0 0 24 24"><path d="M6 3.5h9l3 3v14H6z"/><path d="M9 9.5h6M9 13h6M9 16.5h3.5"/></svg></div>
+          <h4>生成报告</h4>
+          <p>卡片化结果 · 可回显存档</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<hr class="hr-glow" />
+
+<!-- ================= 技术栈 ================= -->
+<section class="sec" id="stack">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2 class="sec-title reveal" style="--d:60ms">全本地部署的<em>技术底座</em></h2>
+      <p class="sec-desc reveal" style="--d:120ms">没有云服务依赖，没有外部影像 API。前端 5176、后端 8000、MySQL 本地实例，一条 <span class="mono">start.bat</span> 拉起全套环境。</p>
+    </div>
+
+    <div class="stack-grid">
+      <div class="tech wide reveal" style="--d:0ms">
+        <div class="tk">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M2.5 4.5h9.2l9.8 15h-9.2z" fill="#42b883" opacity=".9"/><path d="M7 4.5h4l4.6 7-4.6 7H7l4.6-7z" fill="#35495e"/></svg>
+          <b>Vue 3</b><span>UI / 状态 / 路由</span>
+        </div>
+        <p>Composition API 组织视图层，登录、档案列表、3D 查看器三个路由，状态与轮询逻辑集中在 <span class="mono">api/index.js</span>。</p>
+        <span class="bar"></span>
+      </div>
+
+      <div class="tech reveal" style="--d:70ms">
+        <div class="tk">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#00e5ff" stroke-width="1.5"><rect x="3.5" y="3.5" width="17" height="17" rx="3"/><path d="M3.5 12h17M12 3.5v17"/><circle cx="12" cy="12" r="4.5" opacity=".55"/></svg>
+          <b>VTK.js</b><span>Volume</span>
+        </div>
+        <p>体绘制、MPR 三切面、窗宽窗位与测量。</p>
+        <span class="bar"></span>
+      </div>
+
+      <div class="tech reveal" style="--d:140ms">
+        <div class="tk">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#e6f1ff" stroke-width="1.4"><path d="M12 2.6l8.6 5v9.8L12 22.4 3.4 17.4V7.6z"/><path d="M12 12l8.6-5M12 12v10.4M12 12L3.4 7" opacity=".6"/></svg>
+          <b>Three.js</b><span>GLB / Clip</span>
+        </div>
+        <p>glb 加载、OrbitControls、clippingPlanes 实时剖切。</p>
+        <span class="bar"></span>
+      </div>
+
+      <div class="tech reveal" style="--d:210ms">
+        <div class="tk">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#00e5ff" stroke-width="1.5"><circle cx="12" cy="12" r="9"/><path d="M7.5 15.5c1-4.5 3-7 4.5-7s3.5 2.5 4.5 7"/><circle cx="12" cy="12" r="2" fill="#00e5ff" stroke="none"/></svg>
+          <b>FastAPI</b><span>Python 3.11</span>
+        </div>
+        <p>异步任务、DICOM 解析、AI 流水线与存档接口。</p>
+        <span class="bar"></span>
+      </div>
+
+      <div class="tech reveal" style="--d:280ms">
+        <div class="tk">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#ffb020" stroke-width="1.4"><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6"/><path d="M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></svg>
+          <b>MySQL</b><span>8.0.42</span>
+        </div>
+        <p><span class="mono">cases</span> / <span class="mono">lesions</span> 两表，级联删除。</p>
+        <span class="bar"></span>
+      </div>
+
+      <div class="tech reveal" style="--d:350ms">
+        <div class="tk">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#8ce99a" stroke-width="1.5"><path d="M12 2.8l3.2 6.2 6.6 1-4.8 4.7 1.1 6.5L12 18l-6.1 3.2L7 14.7 2.2 10l6.6-1z"/></svg>
+          <b>Node.js 22</b><span>Vite</span>
+        </div>
+        <p>Vite 开发服务器，22.23.4 免安装运行时。</p>
+        <span class="bar"></span>
+      </div>
+
+      <div class="tech wide reveal" style="--d:420ms">
+        <div class="tk">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#ff4d6d" stroke-width="1.5"><path d="M4.5 8.5h15v9a1.5 1.5 0 0 1-1.5 1.5H6a1.5 1.5 0 0 1-1.5-1.5z"/><path d="M8 8.5V6.2A2.2 2.2 0 0 1 10.2 4h3.6A2.2 2.2 0 0 1 16 6.2v2.3"/><path d="M9.6 13h4.8" opacity=".7"/></svg>
+          <b>DICOM / NPY</b><span>Data Pipeline</span>
+        </div>
+        <p>标准 CT Image Storage、Explicit VR Little Endian、16 bit 有符号，像素即 HU；<span class="mono">256×256×192</span> float32 体数据双向可切，解析结果缓存到 <span class="mono">data/dicom_cache</span>。</p>
+        <span class="bar"></span>
+      </div>
+    </div>
+  </div>
+</section>
+<!-- ================= 页脚 CTA ================= -->
+<section class="cta-final" id="about">
+  <div class="wrap">
+    <h2 class="reveal" style="--d:60ms">把「看图」变成「看结构」，<br />让每一次讲解<em>都有三维依据</em></h2>
+    <p class="reveal" style="--d:120ms">
+      13 个病例、2304 片 DICOM、150 万三角面的心脏模型与逐病灶 AI 报告，
+      都在一台电脑上跑通。双击 <span class="mono">start.bat</span> 即可开始演示。
+    </p>
+    <div class="actions reveal" style="--d:180ms">
+      <a href="/login" class="btn btn-primary btn-lg" data-ripple>
+        进入系统
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13M12 5l7 7-7 7"/></svg>
+      </a>
+      <a href="#workflow" class="btn btn-ghost btn-lg" data-ripple>查看影像闭环</a>
+    </div>
+  </div>
+</section>
+</main>
+
+<!-- ================= 站点页脚 ================= -->
+<footer class="site-foot">
+  <div class="wrap">
+    <div class="foot-inner">
+      <div class="l">
+        <div>
+          <b>心脏 CT 3D 可视化医疗辅助系统</b>
+          <span>HEART CT 3D VISUALIZATION · 课程模拟演示版</span>
+        </div>
+      </div>
+      <nav class="foot-links" aria-label="页脚导航">
+        <a href="#features">功能</a>
+        <a href="#capability">能力</a>
+        <a href="#workflow">工作流</a>
+        <a href="#stack">技术栈</a>
+        <a href="#ai">AI 分析</a>
+      </nav>
+    </div>
+    <p class="copy">© <span id="year">2026</span> Heart CT 3D Visualization · Built with Vue3 / VTK.js / Three.js / FastAPI / MySQL</p>
+  </div>
+</footer>
+<script>
+/* ============================================================
+   PART 0 · 全局小工具
+   ============================================================ */
+(function () {
+  'use strict';
+
+  const $  = (s, r) => (r || document).querySelector(s);
+  const $$ = (s, r) => Array.prototype.slice.call((r || document).querySelectorAll(s));
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const lerp = (a, b, t) => a + (b - a) * t;
+  const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const isTouch = window.matchMedia('(hover: none)').matches;
+
+  /* ============================================================
+     PART 1 · 滚动进度 / 导航吸顶 / 汉堡 / 锚点高亮 / 涟漪
+     ============================================================ */
+  const progress = $('#scrollProgress');
+  const nav = $('#nav');
+  const navMenu = $('#navMenu');
+  const burger = $('#burger');
+
+  const navLinks = $$('.nav-menu a');
+  const sections = ['hero', 'features', 'capability', 'workflow', 'stack', 'about']
+    .map(id => document.getElementById(id)).filter(Boolean);
+
+  function onScroll() {
+    const doc = document.documentElement;
+    const y = window.scrollY || doc.scrollTop;
+    const max = doc.scrollHeight - window.innerHeight;
+    if (progress) progress.style.width = (max > 0 ? (y / max) * 100 : 0) + '%';
+    nav.classList.toggle('is-stuck', y > 24);
+
+    // 锚点高亮
+    let cur = sections[0] ? sections[0].id : '';
+    sections.forEach(sec => {
+      if (y + 140 >= sec.offsetTop) cur = sec.id;
+    });
+    navLinks.forEach(a => a.classList.toggle('is-active', a.getAttribute('href') === '#' + cur));
+  }
+  let ticking = false;
+  window.addEventListener('scroll', () => {
+    if (!ticking) { ticking = true; requestAnimationFrame(() => { onScroll(); ticking = false; }); }
+  }, { passive: true });
+  window.addEventListener('resize', onScroll);
+  onScroll();
+
+  // 汉堡菜单
+  if (burger) {
+    burger.addEventListener('click', () => {
+      const open = nav.classList.toggle('is-open');
+      burger.setAttribute('aria-expanded', String(open));
+    });
+  }
+  navLinks.forEach(a => a.addEventListener('click', () => {
+    nav.classList.remove('is-open');
+    burger && burger.setAttribute('aria-expanded', 'false');
+  }));
+
+  // 平滑锚点（补偿固定导航高度）
+  $$('a[href^="#"]').forEach(a => {
+    a.addEventListener('click', e => {
+      const id = a.getAttribute('href');
+      if (!id || id === '#') return;
+      const el = document.querySelector(id);
+      if (!el) return;
+      e.preventDefault();
+      const top = el.getBoundingClientRect().top + window.scrollY - 74;
+      window.scrollTo({ top, behavior: prefersReduced ? 'auto' : 'smooth' });
+    });
+  });
+
+  // 按钮涟漪 + 鼠标光斑
+  $$('[data-ripple], .btn').forEach(btn => {
+    btn.addEventListener('pointermove', e => {
+      const r = btn.getBoundingClientRect();
+      btn.style.setProperty('--mx', ((e.clientX - r.left) / r.width) * 100 + '%');
+      btn.style.setProperty('--my', ((e.clientY - r.top) / r.height) * 100 + '%');
+    });
+    btn.addEventListener('click', e => {
+      const r = btn.getBoundingClientRect();
+      const size = Math.max(r.width, r.height) * 2.2;
+      const span = document.createElement('span');
+      span.className = 'ripple';
+      span.style.cssText = `width:${size}px;height:${size}px;left:${e.clientX - r.left}px;top:${e.clientY - r.top}px;`;
+      btn.appendChild(span);
+      setTimeout(() => span.remove(), 700);
+    });
+  });
+
+  /* ============================================================
+     PART 2 · 滚动淡入（IntersectionObserver）
+     ============================================================ */
+  const revealEls = $$('.reveal, .reveal-l, .reveal-r, .reveal-s');
+  if ('IntersectionObserver' in window && !prefersReduced) {
+    const io = new IntersectionObserver((entries) => {
+      entries.forEach(en => {
+        if (en.isIntersecting) {
+          en.target.classList.add('in');
+          io.unobserve(en.target);
+        }
+      });
+    }, { threshold: 0.12, rootMargin: '0px 0px -8% 0px' });
+    revealEls.forEach((el, i) => {
+      if (!el.style.getPropertyValue('--d')) el.style.setProperty('--d', (i % 6) * 60 + 'ms');
+      io.observe(el);
+    });
+  } else {
+    revealEls.forEach(el => el.classList.add('in'));
+  }
+
+  // Hero 首屏立即入场
+  requestAnimationFrame(() => {
+    $$('#hero .reveal, #hero .reveal-s').forEach(el => el.classList.add('in'));
+  });
+
+  /* ============================================================
+     PART 3 · 数字滚动计数
+     ============================================================ */
+  function animateCount(el) {
+    const to = parseFloat(el.dataset.to || '0');
+    const dur = 1500 + Math.random() * 400;
+    const t0 = performance.now();
+    const dec = (el.dataset.to || '').indexOf('.') > -1 ? 1 : 0;
+    function step(t) {
+      const p = clamp((t - t0) / dur, 0, 1);
+      const e = 1 - Math.pow(1 - p, 3); // easeOutCubic
+      el.textContent = (to * e).toFixed(dec);
+      if (p < 1) requestAnimationFrame(step);
+      else el.textContent = to.toFixed(dec);
+    }
+    requestAnimationFrame(step);
+  }
+  const counters = $$('.count');
+  if ('IntersectionObserver' in window) {
+    const cio = new IntersectionObserver(es => {
+      es.forEach(en => {
+        if (en.isIntersecting) { animateCount(en.target); cio.unobserve(en.target); }
+      });
+    }, { threshold: 0.4 });
+    counters.forEach(el => cio.observe(el));
+  } else counters.forEach(animateCount);
+
+  /* ============================================================
+     PART 4 · 报告卡：置信度环 + 三方误差条
+     ============================================================ */
+  const reportCard = $('#reportCard');
+  function runReport() {
+    const ring = $('#ringFg'), val = $('#ringVal');
+    const R = 30, C = 2 * Math.PI * R, pct = 92;
+    if (ring) ring.style.strokeDashoffset = String(C * (1 - pct / 100));
+    if (val) {
+      const t0 = performance.now();
+      (function tick(t) {
+        const p = clamp((t - t0) / 1400, 0, 1);
+        val.textContent = Math.round(pct * (1 - Math.pow(1 - p, 3)));
+        if (p < 1) requestAnimationFrame(tick);
+      })(t0);
+    }
+    $$('#reportCard .fill').forEach((f, i) => {
+      setTimeout(() => { f.style.width = f.dataset.w + '%'; }, 180 + i * 160);
+    });
+  }
+  if (reportCard && 'IntersectionObserver' in window) {
+    const rio = new IntersectionObserver(es => {
+      es.forEach(en => { if (en.isIntersecting) { runReport(); rio.unobserve(en.target); } });
+    }, { threshold: 0.35 });
+    rio.observe(reportCard);
+  } else if (reportCard) runReport();
+
+  /* ============================================================
+     PART 5 · 卡片 3D 倾斜 + 辉光跟随
+     ============================================================ */
+  if (!isTouch) {
+    $$('.card').forEach(card => {
+      card.addEventListener('pointermove', e => {
+        const r = card.getBoundingClientRect();
+        const px = (e.clientX - r.left) / r.width;
+        const py = (e.clientY - r.top) / r.height;
+        card.style.setProperty('--mx', px * 100 + '%');
+        card.style.setProperty('--my', py * 100 + '%');
+        card.style.setProperty('--rx', ((0.5 - py) * 7).toFixed(2) + 'deg');
+        card.style.setProperty('--ry', ((px - 0.5) * 9).toFixed(2) + 'deg');
+      });
+      card.addEventListener('pointerleave', () => {
+        card.style.setProperty('--rx', '0deg');
+        card.style.setProperty('--ry', '0deg');
+      });
+    });
+  }
+
+  /* ============================================================
+     PART 6 · 背景粒子（轻量 Canvas）
+     ============================================================ */
+  (function bgParticles() {
+    const cv = $('#bgParticles');
+    if (!cv) return;
+    const ctx = cv.getContext('2d');
+    let w = 0, h = 0, dpr = Math.min(window.devicePixelRatio || 1, 2);
+    let pts = [];
+    function resize() {
+      w = cv.clientWidth; h = cv.clientHeight;
+      cv.width = w * dpr; cv.height = h * dpr;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      const n = Math.round(clamp((w * h) / 26000, 26, 90));
+      pts = Array.from({ length: n }, () => ({
+        x: Math.random() * w, y: Math.random() * h,
+        r: Math.random() * 1.5 + 0.4,
+        vy: -(Math.random() * 0.18 + 0.05),
+        vx: (Math.random() - 0.5) * 0.08,
+        a: Math.random() * 0.45 + 0.15,
+        p: Math.random() * Math.PI * 2
+      }));
+    }
+    resize();
+    window.addEventListener('resize', resize);
+
+    let raf = null;
+    function frame(t) {
+      ctx.clearRect(0, 0, w, h);
+      for (let i = 0; i < pts.length; i++) {
+        const p = pts[i];
+        p.x += p.vx; p.y += p.vy;
+        if (p.y < -6) { p.y = h + 6; p.x = Math.random() * w; }
+        if (p.x < -6) p.x = w + 6;
+        if (p.x > w + 6) p.x = -6;
+        const tw = 0.55 + 0.45 * Math.sin(t / 900 + p.p);
+        ctx.beginPath();
+        ctx.fillStyle = 'rgba(0,229,255,' + (p.a * tw).toFixed(3) + ')';
+        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      // 少量连接线
+      ctx.strokeStyle = 'rgba(0,229,255,.06)';
+      ctx.lineWidth = 1;
+      for (let i = 0; i < pts.length; i++) {
+        for (let j = i + 1; j < pts.length; j++) {
+          const dx = pts[i].x - pts[j].x, dy = pts[i].y - pts[j].y;
+          const d2 = dx * dx + dy * dy;
+          if (d2 < 20000) {
+            ctx.beginPath();
+            ctx.moveTo(pts[i].x, pts[i].y);
+            ctx.lineTo(pts[j].x, pts[j].y);
+            ctx.stroke();
+          }
+        }
+      }
+      raf = requestAnimationFrame(frame);
+    }
+    raf = requestAnimationFrame(frame);
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) { cancelAnimationFrame(raf); raf = null; }
+      else if (!raf) raf = requestAnimationFrame(frame);
+    });
+  })();
+/* ============================================================
+     PART 7 · 心脏几何生成（隐函数采样，Three 与 Canvas2D 共用）
+     3D 心形隐函数：(x² + (9/4)y² + z² − 1)³ − x²z³ − (9/80)y²z³ = 0
+     求解空间里 z 为竖直方向，映射到 three 坐标时 z → y。
+     ============================================================ */
+  const HeartGeo = (function () {
+    const F = (x, y, z) => {
+      const a = x * x + 2.25 * y * y + z * z - 1;
+      return a * a * a - x * x * z * z * z - 0.1125 * y * y * z * z * z;
+    };
+    // 沿单位方向从原点向外求最外根
+    function solveR(dx, dy, dz) {
+      let prev = 0.03;
+      let pf = F(dx * prev, dy * prev, dz * prev);
+      for (let r = 0.05; r <= 2.1; r += 0.02) {
+        const f = F(dx * r, dy * r, dz * r);
+        if (f > 0 && pf <= 0) {
+          let lo = prev, hi = r;
+          for (let i = 0; i < 22; i++) {
+            const m = (lo + hi) * 0.5;
+            if (F(dx * m, dy * m, dz * m) > 0) hi = m; else lo = m;
+          }
+          return (lo + hi) * 0.5;
+        }
+        prev = r; pf = f;
+      }
+      return 1.02;
+    }
+    // 球坐标（theta 极角 / phi 方位）→ three 坐标
+    function surf(theta, phi, k) {
+      const st = Math.sin(theta), ct = Math.cos(theta);
+      const dx = st * Math.cos(phi), dy = st * Math.sin(phi), dz = ct;
+      const r = solveR(dx, dy, dz) * (k || 1);
+      return [r * dx, r * dz, r * dy * 0.92]; // x 左右 / y 竖直 / z 前后
+    }
+
+    // 1) 表面点云
+    const N = 5200;
+    const cloud = new Float32Array(N * 3);
+    const golden = Math.PI * (3 - Math.sqrt(5));
+    for (let i = 0; i < N; i++) {
+      const cy = 1 - (i / (N - 1)) * 2;
+      const rad = Math.sqrt(Math.max(0, 1 - cy * cy));
+      const phi = i * golden;
+      const theta = Math.acos(clamp(cy, -1, 1));
+      // 用 theta/phi 采点：cy 作 cosθ
+      const st = rad;
+      const dx = st * Math.cos(phi), dy = st * Math.sin(phi), dz = cy;
+      const r = solveR(dx, dy, dz);
+      cloud[i * 3] = r * dx;
+      cloud[i * 3 + 1] = r * dz;
+      cloud[i * 3 + 2] = r * dy * 0.92;
+    }
+
+    // 2) 经线 / 纬线（线框）
+    const segs = [];
+    const MER = 14, PAR = 9;
+    for (let m = 0; m < MER; m++) {
+      const phi = (m / MER) * Math.PI * 2;
+      let prev = surf(0.10, phi);
+      for (let t = 0.10; t <= Math.PI - 0.10; t += 0.055) {
+        const cur = surf(t, phi);
+        segs.push(prev[0], prev[1], prev[2], cur[0], cur[1], cur[2]);
+        prev = cur;
+      }
+    }
+    for (let p = 1; p < PAR; p++) {
+      const theta = (p / PAR) * Math.PI;
+      let prev = surf(theta, 0);
+      for (let a = 0; a <= Math.PI * 2 + 0.01; a += 0.075) {
+        const cur = surf(theta, a);
+        segs.push(prev[0], prev[1], prev[2], cur[0], cur[1], cur[2]);
+        prev = cur;
+      }
+    }
+
+    // 3) 冠脉 / 血管走行（沿表面的曲线）
+    const vessels = [];
+    const vesselCfg = [
+      { phi0: 0.55, sway: 0.55, spread: 0.75, from: 0.30, to: 2.55 },
+      { phi0: 3.55, sway: 0.42, spread: 0.95, from: 0.34, to: 2.35 },
+      { phi0: 1.75, sway: 0.30, spread: 1.15, from: 0.45, to: 2.10 },
+      { phi0: 5.10, sway: 0.62, spread: 0.60, from: 0.40, to: 2.30 }
+    ];
+    vesselCfg.forEach(c => {
+      const pts = [];
+      const steps = 34;
+      for (let i = 0; i <= steps; i++) {
+        const k = i / steps;
+        const theta = c.from + (c.to - c.from) * k;
+        const phi = c.phi0 + Math.sin(k * Math.PI * 1.35) * c.sway;
+        const p = surf(theta, phi, 1.012);
+        pts.push(p);
+      }
+      vessels.push(pts);
+    });
+    // 4) 主动脉弓（不在表面，手工构造）
+    const aorta = [];
+    for (let i = 0; i <= 26; i++) {
+      const k = i / 26;
+      const ang = Math.PI * (0.12 + k * 0.78);
+      aorta.push([
+        Math.sin(ang) * 0.30,
+        0.86 + Math.sin(k * Math.PI) * 0.52,
+        -0.10 + Math.cos(ang) * 0.22
+      ]);
+    }
+    vessels.push(aorta);
+
+    return { cloud: cloud, count: N, segs: new Float32Array(segs), vessels: vessels };
+  })();
+/* ============================================================
+     PART 8 · 通用 3D→2D 投影渲染器（Canvas 降级 / 面板示意共用）
+     ============================================================ */
+  function rot3(x, y, z, ax, ay) {
+    const cy = Math.cos(ay), sy = Math.sin(ay);
+    const x1 = x * cy + z * sy;
+    const z1 = -x * sy + z * cy;
+    const cx = Math.cos(ax), sx = Math.sin(ax);
+    const y1 = y * cx - z1 * sx;
+    const z2 = y * sx + z1 * cx;
+    return [x1, y1, z2];
+  }
+
+  // 绘制心脏：点云 + 线框 + 血管。opt = {yaw,pitch,scale,cloud,segs,vessels,lesions,hideVessel}
+  function drawHeart(ctx, w, h, o) {
+    const cx = w * 0.5, cy = h * 0.5;
+    const cam = 4.7;
+    const fov = Math.min(w, h) * 1.12;
+    const R = o.scale || 1;
+    const ax = o.pitch || 0, ay = o.yaw || 0;
+
+    const proj = (x, y, z) => {
+      const q = rot3(x * R, y * R, z * R, ax, ay);
+      const zz = q[2] + cam;
+      const k = fov / Math.max(0.4, zz);
+      return [cx + q[0] * k, cy - q[1] * k, q[2], k];
+    };
+
+    ctx.clearRect(0, 0, w, h);
+    ctx.globalCompositeOperation = 'lighter';
+
+    // --- 点云 ---
+    const cl = o.cloud, n = cl.length / 3;
+    for (let i = 0; i < n; i++) {
+      const p = proj(cl[i * 3], cl[i * 3 + 1], cl[i * 3 + 2]);
+      const depth = (p[2] + 1.4) / 2.8;          // 0(后) → 1(前)
+      const a = 0.06 + depth * 0.55;
+      const s = 0.7 + depth * 1.5;
+      ctx.fillStyle = o.pointColor
+        ? o.pointColor(a)
+        : 'rgba(120,240,255,' + a.toFixed(3) + ')';
+      ctx.fillRect(p[0], p[1], s, s);
+    }
+
+    // --- 线框 ---
+    const sg = o.segs;
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(0,229,255,.10)';
+    ctx.beginPath();
+    for (let i = 0; i < sg.length; i += 6) {
+      const a = proj(sg[i], sg[i + 1], sg[i + 2]);
+      const b = proj(sg[i + 3], sg[i + 4], sg[i + 5]);
+      ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]);
+    }
+    ctx.stroke();
+
+    // --- 血管 / 冠脉 ---
+    if (!o.hideVessel && o.vessels) {
+      o.vessels.forEach((vs, vi) => {
+        const isAorta = vi === o.vessels.length - 1;
+        ctx.beginPath();
+        for (let i = 0; i < vs.length; i++) {
+          const p = proj(vs[i][0], vs[i][1], vs[i][2]);
+          if (i === 0) ctx.moveTo(p[0], p[1]); else ctx.lineTo(p[0], p[1]);
+        }
+        ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+        ctx.strokeStyle = isAorta ? 'rgba(255,120,150,.22)' : 'rgba(255,77,109,.26)';
+        ctx.lineWidth = 4.5; ctx.stroke();
+        ctx.strokeStyle = isAorta ? 'rgba(255,190,205,.85)' : 'rgba(255,140,165,.9)';
+        ctx.lineWidth = 1.4; ctx.stroke();
+      });
+    }
+
+    // --- 病灶发光球 ---
+    if (o.lesions) {
+      o.lesions.forEach((l, i) => {
+        const pulse = 0.6 + 0.4 * Math.sin(o.time / 620 + i * 1.7);
+        const p = proj(l[0], l[1], l[2]);
+        const r = (3.2 + pulse * 2.6) * (p[3] / (fov / cam));
+        const g = ctx.createRadialGradient(p[0], p[1], 0, p[0], p[1], r * 3.2);
+        g.addColorStop(0, 'rgba(255,236,140,' + (0.85 * pulse).toFixed(2) + ')');
+        g.addColorStop(0.35, 'rgba(255,196,40,' + (0.42 * pulse).toFixed(2) + ')');
+        g.addColorStop(1, 'rgba(255,170,0,0)');
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.arc(p[0], p[1], r * 3.2, 0, Math.PI * 2); ctx.fill();
+      });
+    }
+
+    ctx.globalCompositeOperation = 'source-over';
+  }
+/* ============================================================
+     PART 9 · HERO 舞台：Three.js 主渲染 + Canvas2D 降级
+     ============================================================ */
+  (function heroStage() {
+    const stage = $('#stage');
+    const cv2d = $('#heartCanvas2d');
+    const cv3d = $('#heartCanvas');
+    if (!stage || !cv2d) return;
+    const ctx2d = cv2d.getContext('2d');
+
+    // 病灶方向（单位向量 → 表面附近取点）
+    const lesionDirs = [
+      [0.46, 0.26, 0.62], [-0.52, 0.12, 0.48], [0.14, -0.58, 0.52],
+      [-0.24, 0.60, 0.40], [0.58, -0.34, 0.34], [-0.10, -0.20, 0.86]
+    ];
+    const lesions = lesionDirs.map(d => {
+      const L = Math.hypot(d[0], d[1], d[2]);
+      return [d[0] / L * 0.94, d[1] / L * 0.94, d[2] / L * 0.94];
+    });
+
+    // 交互状态
+    const S = {
+      yaw: 0.42, pitch: -0.06, scale: 1, targetScale: 1,
+      dragging: false, lastX: 0, lastY: 0, moved: 0,
+      px: 0, py: 0,  // 视差归一化 -1..1
+      visible: true, time: 0
+    };
+
+    /* ---------- 尺寸 ---------- */
+    function fit2d() {
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const w = stage.clientWidth, h = stage.clientHeight;
+      if (!w || !h) return;
+      cv2d.width = Math.round(w * dpr);
+      cv2d.height = Math.round(h * dpr);
+      ctx2d.setTransform(dpr, 0, 0, dpr, 0, 0);
+      cv2d._w = w; cv2d._h = h;
+    }
+    fit2d();
+    window.addEventListener('resize', fit2d);
+
+    /* ---------- Canvas2D 降级渲染 ---------- */
+    let raf2d = 0;
+    function loop2d(t) {
+      S.time = t;
+      if (S.visible) {
+        const w = cv2d._w || 1, h = cv2d._h || 1;
+        if (!S.dragging) S.yaw += 0.0035;
+        S.scale = lerp(S.scale, S.targetScale, 0.08);
+        drawHeart(ctx2d, w, h, {
+          yaw: S.yaw + S.px * 0.12,
+          pitch: S.pitch - S.py * 0.10,
+          scale: S.scale * 1.38,
+          cloud: HeartGeo.cloud,
+          segs: HeartGeo.segs,
+          vessels: HeartGeo.vessels,
+          lesions: lesions,
+          time: t
+        });
+      }
+      raf2d = requestAnimationFrame(loop2d);
+    }
+    raf2d = requestAnimationFrame(loop2d);
+
+    /* ---------- 拖拽 / 滚轮 / 双击 ---------- */
+    function onDown(e) {
+      S.dragging = true; S.moved = 0;
+      const p = e.touches ? e.touches[0] : e;
+      S.lastX = p.clientX; S.lastY = p.clientY;
+      stage.style.cursor = 'grabbing';
+    }
+    function onMove(e) {
+      const p = e.touches ? e.touches[0] : e;
+      if (!S.dragging) return;
+      const dx = p.clientX - S.lastX, dy = p.clientY - S.lastY;
+      S.lastX = p.clientX; S.lastY = p.clientY;
+      S.moved += Math.abs(dx) + Math.abs(dy);
+      S.yaw += dx * 0.008;
+      S.pitch = clamp(S.pitch + dy * 0.006, -0.85, 0.85);
+    }
+    function onUp() { S.dragging = false; stage.style.cursor = ''; }
+
+    stage.addEventListener('pointerdown', onDown);
+    window.addEventListener('pointermove', onMove, { passive: true });
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
+    stage.addEventListener('touchstart', onDown, { passive: true });
+    stage.addEventListener('touchmove', e => { onMove(e); }, { passive: true });
+    stage.addEventListener('touchend', onUp);
+
+    stage.addEventListener('wheel', e => {
+      e.preventDefault();
+      S.targetScale = clamp(S.targetScale - e.deltaY * 0.0009, 0.62, 1.62);
+      if (three && three.scene) three.camDist = clamp(three.camDist + e.deltaY * 0.0014, 1.75, 5.0);
+    }, { passive: false });
+
+    stage.addEventListener('dblclick', () => resetView());
+
+    function resetView() {
+      S.yaw = 0.42; S.pitch = -0.06; S.targetScale = 1;
+      if (three && three.scene) three.camDist = three.baseCamDist;
+    }
+
+    /* ---------- 鼠标视差 ---------- */
+    if (!isTouch) {
+      window.addEventListener('pointermove', e => {
+        const r = stage.getBoundingClientRect();
+        S.px = clamp((e.clientX - (r.left + r.width / 2)) / (r.width * 0.9), -1, 1);
+        S.py = clamp((e.clientY - (r.top + r.height / 2)) / (r.height * 0.9), -1, 1);
+        if (three && three.group) {
+          three.group.position.x = lerp(three.group.position.x, S.px * 0.16, 0.07);
+          three.group.position.y = lerp(three.group.position.y, -S.py * 0.13, 0.07);
+        }
+      }, { passive: true });
+    }
+
+    // 视口可见性
+    if ('IntersectionObserver' in window) {
+      new IntersectionObserver(es => {
+        es.forEach(en => { S.visible = en.isIntersecting; });
+      }, { threshold: 0.02 }).observe(stage);
+    }
+
+/* ---------- Three.js 升级：真实解剖模型 ---------- */
+    let three = null;
+
+    /* ===== 共享 3D 资源（hero 与解剖面板复用同一份 GLB / 光照） ===== */
+    /* 依赖已本地化到 public/lib/：无网、内网、离线演示都能跑，不再请求公网 CDN */
+    const CDN_THREE = './lib/three.min.js';
+    const CDN_GLTF = './lib/GLTFLoader.js';
+    const GLB_URL = 'models/heart_model.glb';
+
+    function loadScript(src) {
+      return new Promise((res, rej) => {
+        const s = document.createElement('script');
+        s.src = src; s.async = true;
+        s.onload = () => res(true);
+        s.onerror = () => rej(new Error('script failed: ' + src));
+        document.head.appendChild(s);
+      });
+    }
+
+    const R3D = window.__R3D || (window.__R3D = {
+      gltf: null, loading: null,
+      makeEnv(T, renderer) {
+        const c = document.createElement('canvas');
+        c.width = 512; c.height = 256;
+        const g = c.getContext('2d');
+        const grad = g.createLinearGradient(0, 0, 0, 256);
+        grad.addColorStop(0, '#6d737a');
+        grad.addColorStop(.45, '#2b2e33');
+        grad.addColorStop(1, '#0b0c0e');
+        g.fillStyle = grad; g.fillRect(0, 0, 512, 256);
+        g.fillStyle = 'rgba(255,252,246,.96)';
+        g.beginPath(); g.ellipse(148, 50, 78, 44, 0, 0, 7); g.fill();
+        g.fillStyle = 'rgba(255,250,242,.55)';
+        g.beginPath(); g.ellipse(378, 34, 94, 30, 0, 0, 7); g.fill();
+        g.fillStyle = 'rgba(20,16,15,.92)'; g.fillRect(0, 196, 512, 60);
+        const tex = new T.CanvasTexture(c);
+        tex.mapping = T.EquirectangularReflectionMapping;
+        tex.encoding = T.sRGBEncoding;
+        const pm = new T.PMREMGenerator(renderer);
+        pm.compileEquirectangularShader();
+        const env = pm.fromEquirectangular(tex).texture;
+        tex.dispose(); pm.dispose();
+        return env;
+      },
+      load(T, onProgress) {
+        if (this.gltf) return Promise.resolve(this.gltf);
+        if (!this.loading) {
+          this.loading = new Promise((res, rej) => {
+            new T.GLTFLoader().load(GLB_URL,
+              g => { this.gltf = g; res(g); },
+              onProgress || function () {},
+              e => { this.loading = null; rej(e); });
+          });
+        }
+        return this.loading;
+      },
+      // 统一材质修正：贴图色彩空间 + 去掉过强金属度
+      tune(root, T) {
+        root.traverse(o => {
+          if (!o.isMesh) return;
+          const m = o.material;
+          if (m.map) { m.map.encoding = T.sRGBEncoding; m.map.anisotropy = 4; }
+          if (m.normalMap) m.normalMap.anisotropy = 4;
+          m.metalness = 0.02;
+          m.roughness = 0.62;
+          m.envMapIntensity = 0.5;
+          /* 贴图本身偏紫（均值 107,79,96，蓝通道高于绿），用乘性 tint 把蓝压回血色，
+             让心肌落在暗红而非紫粉；脂肪与血管的层次仍由贴图本身保留。 */
+          if (m.color) m.color.setRGB(1.0, 0.70, 0.58);
+          m.side = T.FrontSide;
+          m.needsUpdate = true;
+        });
+      },
+      // 归一化到半径 = 1，返回 {holder, radiusScale}
+      normalize(root, T) {
+        const box = new T.Box3().setFromObject(root);
+        const sph = box.getBoundingSphere(new T.Sphere());
+        root.position.sub(sph.center);
+        const k = 1 / sph.radius;
+        const holder = new T.Group();
+        holder.add(root);
+        holder.scale.setScalar(k);
+        return { holder, k };
+      },
+      lights(T, scene) {
+        /* 解剖保真优先：光源不染色。主光模拟手术无影灯的暖白，补光中性只提暗部，
+           边缘光极轻地模拟组织次表面透光，不再用青色/品红轮廓光。 */
+        const key = new T.DirectionalLight(0xfff6ec, 1.95); key.position.set(2.4, 2.3, 3.0);
+        const fill = new T.DirectionalLight(0xf0e8e2, 0.42); fill.position.set(-3.0, 0.35, 1.5);
+        const rim = new T.DirectionalLight(0xffd9c8, 0.65); rim.position.set(-1.2, -0.9, -3.0);
+        const hemi = new T.HemisphereLight(0xdde4ec, 0x140d0c, 0.3);
+        [key, fill, rim, hemi].forEach(l => scene.add(l));
+        return { key, fill, rim, hemi };
+      },
+      glowTexture(T, inner, mid, outer) {
+        const c = document.createElement('canvas');
+        c.width = c.height = 64;
+        const g = c.getContext('2d');
+        const rg = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+        rg.addColorStop(0, inner);
+        rg.addColorStop(0.3, mid);
+        rg.addColorStop(1, outer);
+        g.fillStyle = rg; g.fillRect(0, 0, 64, 64);
+        return new T.CanvasTexture(c);
+      }
+    });
+
+    function initThree() {
+      const T = window.THREE;
+      if (!T) return;
+
+      const renderer = new T.WebGLRenderer({
+        canvas: cv3d, antialias: true, alpha: true, powerPreference: 'high-performance'
+      });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+      renderer.outputEncoding = T.sRGBEncoding;
+      renderer.toneMapping = T.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 0.92;
+
+      const scene = new T.Scene();
+      const camera = new T.PerspectiveCamera(42, 1, 0.01, 120);
+      const baseCamDist = 2.62;
+      camera.position.set(0, 0, baseCamDist);
+
+      const group = new T.Group();
+      scene.add(group);
+
+      scene.environment = R3D.makeEnv(T, renderer);
+      R3D.lights(T, scene);
+
+      /* ---------- 真实模型：1,499,742 三角面 / 909,799 顶点 / 3 张 PBR 贴图 ---------- */
+      const loadEl = document.getElementById('stageLoad');
+      const barEl = document.getElementById('stageBar');
+      const pctEl = document.getElementById('stagePct');
+      const sliceEl = document.getElementById('stageSlices');
+
+      let holder = null;
+
+      R3D.load(T, xhr => {
+        if (!xhr || !xhr.total) return;
+        const p = Math.min(100, xhr.loaded / xhr.total * 100);
+        if (barEl) barEl.style.width = p.toFixed(1) + '%';
+        if (pctEl) pctEl.textContent = Math.round(p) + '%';
+        /* 用这个系统自己的单位说话：2304 是它声明的 DICOM 片数 */
+        if (sliceEl) sliceEl.textContent = Math.round(Math.min(2304, p / 100 * 2304)) + ' / 2304 片';
+      }).then(gltf => {
+        const root = gltf.scene.clone(true);
+        R3D.tune(root, T);
+        const norm = R3D.normalize(root, T);
+        holder = norm.holder;
+        holder.rotation.set(0, 0, 0);
+        group.add(holder);
+        if (three) three.holder = holder;
+
+        /* 病灶标注：射线投射到真实解剖表面（从外部射入，命中正面） */
+        const glowTex = R3D.glowTexture(T,
+          'rgba(255,240,170,1)', 'rgba(255,200,60,.72)', 'rgba(255,170,0,0)');
+        const lesionDirs = [
+          [0.55, 0.28, 0.62], [-0.58, 0.12, 0.50], [0.12, -0.62, 0.55],
+          [-0.30, 0.62, 0.42], [0.70, -0.30, 0.25]
+        ];
+        const rc = new T.Raycaster();
+        group.updateMatrixWorld(true);
+        const tmpM = new T.Matrix4().copy(holder.matrixWorld).invert();
+        lesionDirs.forEach(d => {
+          const v = new T.Vector3(d[0], d[1], d[2]).normalize();
+          rc.set(v.clone().multiplyScalar(2.2), v.clone().negate());
+          const hit = rc.intersectObject(root, true)[0];
+          if (!hit) return;
+          const pos = hit.point.clone().applyMatrix4(tmpM);
+          const core = new T.Mesh(
+            new T.SphereGeometry(0.014, 10, 10),
+            new T.MeshBasicMaterial({ color: 0xffe27a })
+          );
+          core.position.copy(pos);
+          holder.add(core);
+          const sp = new T.Sprite(new T.SpriteMaterial({
+            map: glowTex, transparent: true, opacity: 0.9,
+            blending: T.AdditiveBlending, depthWrite: false
+          }));
+          sp.scale.set(0.15, 0.15, 1);
+          sp.position.copy(pos);
+          holder.add(sp);
+        });
+
+        if (loadEl) {
+          if (pctEl) pctEl.textContent = '100%';
+          if (barEl) barEl.style.width = '100%';
+          if (sliceEl) sliceEl.textContent = '2304 / 2304 片';
+          setTimeout(() => loadEl.classList.add('done'), 380);
+        }
+
+        /* 装载完成那一下：一次双相搏动（收缩→舒张），不是循环动画 */
+        if (!prefersReduced && holder && norm.k) {
+          const k0 = norm.k, t0 = performance.now();
+          (function beat(n) {
+            const t = Math.min((n - t0) / 680, 1);
+            const s = 1 - 0.034 * Math.sin(Math.PI * 2 * t) * Math.exp(-1.7 * t);
+            holder.scale.setScalar(k0 * s);
+            if (t < 1) requestAnimationFrame(beat);
+            else holder.scale.setScalar(k0);
+          })(performance.now());
+        }
+      }).catch(err => {
+        console.warn('[landing] 解剖模型加载失败，回退 Canvas2D：', err);
+        if (loadEl) loadEl.classList.add('done');
+      });
+
+      /* ---------- CT 扫描平面 + 扫描环 ---------- */
+      const scanPlane = new T.Mesh(
+        new T.RingGeometry(0.16, 1.14, 64),
+        new T.MeshBasicMaterial({
+          color: 0x00e5ff, transparent: true, opacity: 0.07,
+          side: T.DoubleSide, blending: T.AdditiveBlending, depthWrite: false
+        })
+      );
+      scanPlane.rotation.x = -Math.PI / 2;
+      group.add(scanPlane);
+
+      const scanRing = new T.Mesh(
+        new T.TorusGeometry(1.14, 0.0042, 8, 128),
+        new T.MeshBasicMaterial({
+          color: 0x9ff8ff, transparent: true, opacity: 0.9,
+          blending: T.AdditiveBlending, depthWrite: false
+        })
+      );
+      scanRing.rotation.x = -Math.PI / 2;
+      group.add(scanRing);
+
+      /* ---------- 环绕星尘 ---------- */
+      const dustN = 620;
+      const dustPos = new Float32Array(dustN * 3);
+      for (let i = 0; i < dustN; i++) {
+        const r = 1.85 + Math.random() * 1.9;
+        const th = Math.acos(2 * Math.random() - 1);
+        const ph = Math.random() * Math.PI * 2;
+        dustPos[i * 3] = r * Math.sin(th) * Math.cos(ph);
+        dustPos[i * 3 + 1] = r * Math.cos(th) * 0.85;
+        dustPos[i * 3 + 2] = r * Math.sin(th) * Math.sin(ph);
+      }
+      const dustGeo = new T.BufferGeometry();
+      dustGeo.setAttribute('position', new T.BufferAttribute(dustPos, 3));
+      const dust = new T.Points(dustGeo, new T.PointsMaterial({
+        color: 0x9fe9ff, size: 0.014, transparent: true, opacity: 0.5,
+        blending: T.AdditiveBlending, depthWrite: false
+      }));
+      scene.add(dust);
+
+      function resize() {
+        const w = stage.clientWidth, h = stage.clientHeight;
+        if (!w || !h) return;
+        renderer.setSize(w, h, false);
+        camera.aspect = w / h;
+        camera.updateProjectionMatrix();
+      }
+      resize();
+      window.addEventListener('resize', resize);
+
+      three = { scene, camera, renderer, group, dust, scanPlane, scanRing, holder, camDist: baseCamDist, baseCamDist };
+      window.__HERO3D = three;
+
+      let clockT = 0;
+      function loop(t) {
+        if (!S.visible) { requestAnimationFrame(loop); return; }
+        const dt = Math.min(0.05, (t - clockT) / 1000 || 0.016);
+        clockT = t;
+
+        if (!S.dragging) S.yaw += dt * 0.26;
+        group.rotation.y = S.yaw;
+        group.rotation.x = S.pitch;
+
+        const sy = Math.sin(t / 2100) * 1.02;
+        scanPlane.position.y = sy;
+        scanRing.position.y = sy;
+
+        dust.rotation.y += dt * 0.05;
+        dust.rotation.x += dt * 0.012;
+
+        camera.position.z = lerp(camera.position.z, three.camDist, 0.1);
+        renderer.render(scene, camera);
+        requestAnimationFrame(loop);
+      }
+      requestAnimationFrame(loop);
+    }
+
+
+    // 异步加载 three.js + GLTFLoader（失败自动保持 Canvas2D 降级）
+    (function loadThree() {
+      function ready() {
+        initThree();
+        cv2d.classList.add('is-hidden');
+        cancelAnimationFrame(raf2d);
+        raf2d = 0;
+      }
+      Promise.resolve()
+        .then(() => window.THREE ? true : loadScript(CDN_THREE))
+        .then(() => window.THREE && window.THREE.GLTFLoader ? true : loadScript(CDN_GLTF))
+        .then(() => { if (!window.THREE) throw new Error('THREE missing'); ready(); })
+        .catch(err => {
+          console.warn('[landing] 3D 资源不可用，使用 Canvas2D 降级视觉：', err && err.message);
+          const l = document.getElementById('stageLoad');
+          if (l) l.classList.add('done');
+        });
+    })();
+  })();
+/* ============================================================
+     PART 10 · ECG 心电图条
+     ============================================================ */
+  (function ecg() {
+    const cv = $('#ecgCanvas');
+    if (!cv) return;
+    const ctx = cv.getContext('2d');
+    let w = 190, h = 44;
+    function fit() {
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      w = cv.clientWidth || 190; h = cv.clientHeight || 44;
+      cv.width = w * dpr; cv.height = h * dpr;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+    fit();
+    window.addEventListener('resize', fit);
+
+    const N = 78;
+    const buf = new Array(N).fill(0);
+    let phase = 0, last = 0;
+
+    // P-QRS-T 波形（相位 0..1）
+    function wave(p) {
+      const g = (c, s) => Math.exp(-Math.pow((p - c) / s, 2));
+      return g(0.18, 0.038) * 0.16
+           - g(0.30, 0.017) * 0.12
+           + g(0.355, 0.011) * 1.0
+           - g(0.405, 0.015) * 0.46
+           + g(0.53, 0.065) * 0.26;
+    }
+
+    function loop(t) {
+      if (t - last > 28) {
+        last = t;
+        phase = (phase + 0.0115) % 1;
+        buf.push(wave(phase));
+        buf.shift();
+      }
+      ctx.clearRect(0, 0, w, h);
+      const mid = h * 0.6, amp = h * 0.36;
+
+      // 基线网格
+      ctx.strokeStyle = 'rgba(0,229,255,.10)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(0, mid); ctx.lineTo(w, mid);
+      ctx.stroke();
+
+      // 波形
+      ctx.beginPath();
+      for (let i = 0; i < N; i++) {
+        const x = (i / (N - 1)) * w;
+        const y = mid - buf[i] * amp;
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.strokeStyle = 'rgba(0,229,255,.9)';
+      ctx.lineWidth = 1.4;
+      ctx.shadowColor = 'rgba(0,229,255,.9)';
+      ctx.shadowBlur = 8;
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+
+      // 头部亮点
+      const hy = mid - buf[N - 1] * amp;
+      ctx.beginPath();
+      ctx.arc(w - 1.5, hy, 2.1, 0, Math.PI * 2);
+      ctx.fillStyle = '#b9f7ff';
+      ctx.fill();
+
+      requestAnimationFrame(loop);
+    }
+    requestAnimationFrame(loop);
+  })();
+
+  /* ============================================================
+     PART 11 · 双模式可视化面板 + Tab 切换
+     ============================================================ */
+  (function dualMode() {
+    const tabs = $('#dualTabs');
+    const thumb = $('#tabThumb');
+    const pa = $('#panelAnatomy'), pv = $('#panelVolume');
+    const da = $('#descAnatomy'), dv = $('#descVolume');
+    if (!tabs || !pa || !pv) return;
+    const btns = $$('button', tabs);
+
+    function layoutThumb(mode) {
+      const total = tabs.clientWidth;
+      const half = total / 2;
+      thumb.style.width = (half - 5) + 'px';
+      thumb.style.transform = 'translateX(' + (mode === 'volume' ? half : 0) + 'px)';
+    }
+
+    function setMode(mode) {
+      btns.forEach(b => {
+        const on = b.dataset.mode === mode;
+        b.classList.toggle('on', on);
+        b.setAttribute('aria-selected', String(on));
+      });
+      layoutThumb(mode);
+      pa.classList.toggle('on', mode === 'anatomy');
+      pv.classList.toggle('on', mode === 'volume');
+      if (da && dv) {
+        da.style.display = mode === 'anatomy' ? '' : 'none';
+        dv.style.display = mode === 'volume' ? '' : 'none';
+        da.classList.add('in'); dv.classList.add('in');
+      }
+    }
+    btns.forEach(b => b.addEventListener('click', () => setMode(b.dataset.mode)));
+    layoutThumb('anatomy');
+    window.addEventListener('resize', () => { layoutThumb(tabs.querySelector('button.on').dataset.mode); fitAn(); fitVol(); });
+
+/* ---------- 解剖模型面板（真实 GLB · WebGL） ---------- */
+    const cvA = $('#anatomyCanvas');
+    let anThree = null;
+    function fitAn() {
+      const w = cvA.clientWidth, h = cvA.clientHeight;
+      if (!w || !h) return;
+      if (anThree) {
+        anThree.renderer.setSize(w, h, false);
+        anThree.camera.aspect = w / h;
+        anThree.camera.updateProjectionMatrix();
+      }
+    }
+    fitAn();
+
+    function initAnatomy3D() {
+      const T = window.THREE;
+      if (!T || !window.__R3D || !window.__R3D.gltf || anThree) return;
+      const renderer = new T.WebGLRenderer({ canvas: cvA, antialias: true, alpha: true });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.75));
+      renderer.outputEncoding = T.sRGBEncoding;
+      renderer.toneMapping = T.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.32;
+
+      const scene = new T.Scene();
+      const camera = new T.PerspectiveCamera(38, 1, 0.01, 60);
+      camera.position.set(0, 0, 2.18);
+      scene.environment = window.__R3D.makeEnv(T, renderer);
+      window.__R3D.lights(T, scene);
+
+      const root = window.__R3D.gltf.scene.clone(true);
+      window.__R3D.tune(root, T);
+      const norm = window.__R3D.normalize(root, T);
+      const g = new T.Group();
+      g.add(norm.holder);
+
+      /* 病灶点打在同一解剖表面上（从体外射入，命中正面） */
+      const glow = window.__R3D.glowTexture(T,
+        'rgba(255,240,170,1)', 'rgba(255,200,60,.7)', 'rgba(255,170,0,0)');
+      const rc = new T.Raycaster();
+      scene.add(g);
+      scene.updateMatrixWorld(true);
+      const inv = new T.Matrix4().copy(g.matrixWorld).invert();
+      let lesionHit = 0;
+      [[0.5, 0.3, 0.6], [-0.55, 0.1, 0.5], [0.1, -0.6, 0.55], [-0.3, 0.6, 0.4]].forEach(d => {
+        const v = new T.Vector3(d[0], d[1], d[2]).normalize();
+        rc.set(v.clone().multiplyScalar(2.4), v.clone().negate());
+        const hit = rc.intersectObject(root, true)[0];
+        if (!hit) return;
+        lesionHit++;
+        const pos = hit.point.clone().applyMatrix4(inv);
+        const sp = new T.Sprite(new T.SpriteMaterial({
+          map: glow, transparent: true, opacity: 0.9,
+          blending: T.AdditiveBlending, depthWrite: false
+        }));
+        sp.scale.set(0.14, 0.14, 1);
+        sp.position.copy(pos);
+        norm.holder.add(sp);
+      });
+
+      scene.add(g);
+      anThree = { renderer, scene, camera, group: g };
+      window.__AN3D = anThree;
+      fitAn();
+    }
+
+    const anTimer = setInterval(() => {
+      if (window.__R3D && window.__R3D.gltf) {
+        clearInterval(anTimer);
+        try { initAnatomy3D(); } catch (e) { console.warn('[landing] 解剖面板 3D 初始化失败', e); }
+      }
+    }, 400);
+    setTimeout(() => clearInterval(anTimer), 90000);
+
+    let anT = 0, anVisible = true;
+    if ('IntersectionObserver' in window) {
+      new IntersectionObserver(es => {
+        es.forEach(e => { anVisible = e.isIntersecting; });
+      }, { threshold: 0.02 }).observe(pa);
+    }
+
+    function loopAn(t) {
+      anT = t;
+      if (anVisible && pa.classList.contains('on') && anThree) {
+        anThree.group.rotation.y = t / 4600;
+        anThree.group.rotation.x = -0.10 + Math.sin(t / 5800) * 0.05;
+        anThree.renderer.render(anThree.scene, anThree.camera);
+      }
+      requestAnimationFrame(loopAn);
+    }
+    requestAnimationFrame(loopAn);
+
+/* ---------- 体数据渲染面板（真实 DICOM 体数据） ---------- */
+    const cvV = $('#volumeCanvas');
+    const ctxV = cvV.getContext('2d');
+    function fitVol() {
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const w = cvV.clientWidth, h = cvV.clientHeight;
+      if (!w || !h) return;
+      cvV.width = w * dpr; cvV.height = h * dpr;
+      ctxV.setTransform(dpr, 0, 0, dpr, 0, 0);
+      cvV._w = w; cvV._h = h;
+    }
+    fitVol();
+
+    /* 真实体渲染资产：data/volumes/case_01.npy → ROI 160×148×148
+       · vol_mip_*  斜位 MIP + 深度着色（HU 110–480 伪彩）
+       · mpr_*      轴位 / 冠状 / 矢状 真实切片（WW600 / WL120） */
+    const VOL_IMG = {};
+    function volImg(key, src) {
+      const im = new Image();
+      im.onload = function () { VOL_IMG[key] = im; };
+      im.src = src;
+    }
+    volImg('a', 'landing-assets/vol_mip_v3d.png');
+    volImg('b', 'landing-assets/vol_mip_v3d2.png');
+    volImg('ax', 'landing-assets/mpr_axial.png');
+    volImg('cor', 'landing-assets/mpr_coronal.png');
+    volImg('sag', 'landing-assets/mpr_sagittal.png');
+
+    /* 水平拖动 = 在两个真实投照角度之间混合 */
+    const VS = { t: 0.0, drag: false, x0: 0, t0: 0, ph: 0 };
+    cvV.style.cursor = 'grab';
+    cvV.addEventListener('pointerdown', e => {
+      VS.drag = true; VS.x0 = e.clientX; VS.t0 = VS.t;
+      cvV.style.cursor = 'grabbing';
+    });
+    window.addEventListener('pointermove', e => {
+      if (!VS.drag) return;
+      VS.t = clamp(VS.t0 + (e.clientX - VS.x0) / 300, 0, 1);
+    });
+    window.addEventListener('pointerup', () => {
+      VS.drag = false; cvV.style.cursor = 'grab';
+    });
+
+    function drawVolume(t) {
+      const w = cvV._w || 1, h = cvV._h || 1;
+      ctxV.clearRect(0, 0, w, h);
+
+      const A = VOL_IMG.a, B = VOL_IMG.b;
+
+      /* ---- 主视图：真实斜位 MIP 渲染 ---- */
+      if (A && A.complete && A.width) {
+        const s = Math.max(w / A.width, h / A.height) * 1.06;
+        const dw = A.width * s, dh = A.height * s;
+        const bob = Math.sin(t / 3600) * 2.0;
+        const dx = (w - dw) / 2, dy = (h - dh) / 2 + bob;
+        ctxV.drawImage(A, dx, dy, dw, dh);
+        if (B && B.complete && VS.t > 0.012) {
+          ctxV.globalAlpha = Math.min(1, VS.t);
+          ctxV.drawImage(B, dx, dy, dw, dh);
+          ctxV.globalAlpha = 1;
+        }
+      } else {
+        ctxV.fillStyle = 'rgba(0,229,255,.06)';
+        ctxV.fillRect(0, 0, w, h);
+        ctxV.fillStyle = 'rgba(160,210,235,.55)';
+        ctxV.font = '11px ui-monospace, monospace';
+        ctxV.fillText('LOADING VOLUME RENDER…', 16, 26);
+      }
+
+      /* ---- 剖切扫描线 ---- */
+      VS.ph = (t / 5200) % 1;
+      const sy = h * (0.08 + VS.ph * 0.84);
+      const grad = ctxV.createLinearGradient(0, sy - 12, 0, sy + 12);
+      grad.addColorStop(0, 'rgba(0,229,255,0)');
+      grad.addColorStop(0.5, 'rgba(0,229,255,.55)');
+      grad.addColorStop(1, 'rgba(0,229,255,0)');
+      ctxV.fillStyle = grad;
+      ctxV.fillRect(0, sy - 12, w, 24);
+      ctxV.strokeStyle = 'rgba(150,240,255,.85)';
+      ctxV.lineWidth = 1;
+      ctxV.beginPath();
+      ctxV.moveTo(0, sy); ctxV.lineTo(w, sy);
+      ctxV.stroke();
+      ctxV.fillStyle = 'rgba(0,229,255,.9)';
+      ctxV.font = '9px ui-monospace, monospace';
+      ctxV.fillText('Z ' + String(Math.round(19 + VS.ph * 149)).padStart(3, '0'), w - 46, sy - 4);
+
+      /* ---- 三联 MPR：真实轴位 / 冠状 / 矢状切片 ---- */
+      const mini = Math.min(w, h) * 0.21;
+      const gap = mini * 0.09;
+      const totalW = mini * 3 + gap * 2;
+      const bx = w - totalW - 14;
+      const by = h - mini - 14;
+      const items = [
+        { k: 'ax', lb: 'AXIAL' },
+        { k: 'cor', lb: 'CORONAL' },
+        { k: 'sag', lb: 'SAGITTAL' }
+      ];
+      items.forEach((it, i) => {
+        const x = bx + i * (mini + gap);
+        ctxV.save();
+        ctxV.beginPath();
+        ctxV.rect(x, by, mini, mini);
+        ctxV.clip();
+        const im = VOL_IMG[it.k];
+        if (im && im.complete && im.width) {
+          ctxV.drawImage(im, x, by, mini, mini);
+        } else {
+          ctxV.fillStyle = 'rgba(0,30,45,.85)';
+          ctxV.fillRect(x, by, mini, mini);
+        }
+        ctxV.restore();
+        ctxV.strokeStyle = 'rgba(0,229,255,.42)';
+        ctxV.lineWidth = 1;
+        ctxV.strokeRect(x + .5, by + .5, mini - 1, mini - 1);
+        ctxV.fillStyle = 'rgba(180,235,255,.92)';
+        ctxV.font = '8px ui-monospace, monospace';
+        ctxV.fillText(it.lb, x + 4, by + mini - 5);
+      });
+
+      /* ---- 角标刻度 ---- */
+      ctxV.font = '9px ui-monospace, monospace';
+      ctxV.fillStyle = 'rgba(140,180,220,.55)';
+      ctxV.fillText('HU 110–480 → PSEUDO COLOR', 14, h - 14);
+      ctxV.fillStyle = 'rgba(255,120,145,.75)';
+      ctxV.fillText('VIEW ' + (VS.t * 100).toFixed(0) + '%', 14, 22);
+    }
+
+    function loopVol(t) {
+      if (volVisible && pv.classList.contains('on')) drawVolume(t);
+      requestAnimationFrame(loopVol);
+    }
+    let volVisible = true;
+    requestAnimationFrame(loopVol);
+
+    if ('IntersectionObserver' in window) {
+      new IntersectionObserver(es => {
+        es.forEach(en => { anVisible = volVisible = en.isIntersecting; });
+      }, { threshold: 0.05 }).observe($('#panelStage'));
+    }
+  })();
+/* ============================================================
+     PART 12 · 杂项：年份 / 首屏层级微调
+     ============================================================ */
+  const yearEl = $('#year');
+  if (yearEl) yearEl.textContent = String(new Date().getFullYear());
+
+  // 若视口很矮（如横屏手机），Hero 不强制 100vh
+  function heroFit() {
+    const hero = $('#hero');
+    if (!hero) return;
+    if (window.innerHeight < 620) hero.style.minHeight = 'auto';
+    else hero.style.minHeight = '100vh';
+  }
+  heroFit();
+  window.addEventListener('resize', heroFit);
+})();
+</script>
+<script>
+/* 落地页(8902) 与应用(5176) 跑在两个端口上：在静态落地页里，把站内应用链接指向应用端口，
+   否则点「进入系统」会落到静态服务器的 /login 得到 404。在 5176 或正式同域部署下不生效。 */
+(function () {
+  if (location.port !== '8902') return;
+  var appBase = location.protocol + '//' + location.hostname + ':5176';
+  document.querySelectorAll('a[href^="/"]').forEach(function (a) {
+    a.setAttribute('href', appBase + a.getAttribute('href'));
+  });
+})();
+</script>
+</body>
+</html>
